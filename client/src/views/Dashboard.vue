@@ -1,32 +1,16 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { auth } from '../store.js';
 
 const router = useRouter();
-
-const title = ref('PaperDaily');
-const message = ref('Your daily digest of research papers.');
 const loggingOut = ref(false);
-
-onMounted(async () => {
-  try {
-    const res = await fetch('/api/welcome');
-    if (res.ok) {
-      const data = await res.json();
-      title.value = data.title;
-      message.value = data.message;
-    }
-  } catch {
-    // API unavailable — keep defaults
-  }
-});
 
 async function logout() {
   loggingOut.value = true;
   try {
     await auth.logout();
-    router.replace('/login');
+    router.replace('/');
   } finally {
     loggingOut.value = false;
   }
@@ -35,8 +19,8 @@ async function logout() {
 
 <template>
   <div class="home">
-    <h1>{{ title }}</h1>
-    <p class="sub">{{ message }}</p>
+    <h1>Dashboard</h1>
+    <p class="sub">Your daily digest of research papers.</p>
 
     <div class="account">
       <p>

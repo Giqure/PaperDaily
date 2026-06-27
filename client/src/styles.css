@@ -50,6 +50,26 @@ body {
   opacity: 0.9;
 }
 
+.account .entry {
+  display: inline-block;
+  padding: 0.7rem 1.6rem;
+  border-radius: 8px;
+  background: #3182ce;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+
+.account .entry:hover {
+  background: #2b6cb0;
+}
+
+.account .signed-in {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
 /* --- Auth card --- */
 .auth-card {
   width: 100%;
