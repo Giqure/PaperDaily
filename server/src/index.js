@@ -13,6 +13,8 @@ import { migrate } from './db/migrate.js';
 import { attachUser } from './auth/middleware.js';
 import { csrfOriginCheck } from './auth/csrf.js';
 import authRoutes from './auth/routes.js';
+import subscriptionRoutes from './subscriptions/routes.js';
+import paperRoutes from './papers/routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -86,6 +88,8 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/papers', paperRoutes);
 
 app.get('/api/welcome', (req, res) => {
   res.json({

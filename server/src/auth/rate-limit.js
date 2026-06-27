@@ -38,3 +38,16 @@ export const checkEmailLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many requests. Try again later.' },
 });
+
+/**
+ * Limiter for authenticated write operations (managing subscriptions and paper
+ * state). Generous enough for normal interactive use, but caps runaway clients
+ * or scripted abuse. Keyed by IP.
+ */
+export const writeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 200, // 200 writes per window per IP
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Slow down and try again shortly.' },
+});

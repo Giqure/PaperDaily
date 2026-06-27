@@ -74,6 +74,39 @@ const migrations = [
     }
     d.exec('CREATE UNIQUE INDEX idx_users_uid ON users(uid);');
   },
+
+  // 0004 — keyword subscriptions + per-user paper state (saved/dismissed)
+  (d) => {
+    d.exec(`
+      CREATE TABLE subscriptions (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        keyword    TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      -- Keywords are stored normalized (trimmed, lowercased) so this unique
+      -- index also enforces case-insensitive de-duplication per user.
+      CREATE UNIQUE INDEX idx_subscriptions_user_keyword
+        ON subscriptions(user_id, keyword);
+      CREATE INDEX idx_subscriptions_user ON subscriptions(user_id);
+
+      -- A user's relationship to a paper in their digest. Absence of a row
+      -- means "untouched"; a row is either 'saved' or 'dismissed'.
+      CREATE TABLE user_papers (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        paper_id   INTEGER NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+        state      TEXT NOT NULL CHECK (state IN ('saved', 'dismissed')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE UNIQUE INDEX idx_user_papers_user_paper
+        ON user_papers(user_id, paper_id);
+      CREATE INDEX idx_user_papers_user_state ON user_papers(user_id, state);
+    `);
+  },
 ];
 
 import { randomUUID } from 'node:crypto';
