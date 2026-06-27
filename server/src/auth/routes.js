@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { hashPassword, verifyPassword } from './password.js';
 import { createUser, findByEmail, toPublic } from '../users/queries.js';
+import { loginLimiter, signupLimiter } from './rate-limit.js';
 
 const router = Router();
 
@@ -25,7 +26,7 @@ function login(req, user) {
 }
 
 /** POST /api/auth/signup — email + password + optional name. */
-router.post('/signup', async (req, res) => {
+router.post('/signup', signupLimiter, async (req, res) => {
   const email = String(req.body?.email ?? '').trim().toLowerCase();
   const password = String(req.body?.password ?? '');
   const name = req.body?.name ? String(req.body.name).trim() : null;
@@ -55,7 +56,7 @@ router.post('/signup', async (req, res) => {
 });
 
 /** POST /api/auth/login — email + password. */
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   const email = String(req.body?.email ?? '').trim().toLowerCase();
   const password = String(req.body?.password ?? '');
 

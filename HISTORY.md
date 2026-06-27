@@ -28,3 +28,11 @@ files:
 - - - db\
 - - - - index.js
 - - - - migrate.js
+- - - users\
+- - - - queries.js
+- - - env.js
+
+Sanity check. 
+When logging in, session regenerates.
+SESSION_SECRET is checked when production mode.
+TODO: CSRF

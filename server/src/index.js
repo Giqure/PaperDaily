@@ -11,6 +11,7 @@ import path from 'node:path';
 import db from './db/index.js';
 import { migrate } from './db/migrate.js';
 import { attachUser } from './auth/middleware.js';
+import { csrfOriginCheck } from './auth/csrf.js';
 import authRoutes from './auth/routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -35,9 +36,14 @@ if (!isProd && !sessionSecret) {
   console.warn('SESSION_SECRET is not set; using an insecure development fallback.');
 }
 // Credentialed CORS so the SPA on a different dev origin can send the cookie.
+const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+    origin: allowedOrigins,
     credentials: true,
   })
 );
@@ -63,6 +69,9 @@ app.use(
 
 // Resolve session -> req.user for every request.
 app.use(attachUser);
+
+// CSRF defense-in-depth: reject cross-origin unsafe requests on the API.
+app.use('/api', csrfOriginCheck(allowedOrigins));
 
 // API routes
 app.get('/api/health', (req, res) => {
