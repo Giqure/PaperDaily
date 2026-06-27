@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch, nextTick, onMounted } from 'vue';
+import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 
 const props = defineProps({
   paper: { type: Object, required: true },
@@ -21,19 +21,22 @@ const authorList = computed(() => {
 const saved = computed(() => props.paper.state === 'saved');
 const dismissed = computed(() => props.paper.state === 'dismissed');
 
-// A saved card can be flipped to render with the daily vote actions instead of
-// the Remove button. Only meaningful when context is 'saved'.
-const viewMode = ref(props.context);
-
-// Removing a saved paper requires a double-check: the first click arms the
-// button, the second confirms. Blurring the button disarms it.
+// Remove is a two-step confirm: the first click arms it, the second commits.
+// It disarms on blur or after a short timeout so a stray click can't linger.
 const confirmingRemove = ref(false);
+let confirmTimer = null;
+
 function onRemoveClick() {
-  if (!confirmingRemove.value) {
-    confirmingRemove.value = true;
+  if (confirmingRemove.value) {
+    clearTimeout(confirmTimer);
+    confirmingRemove.value = false;
+    emit('unsave');
     return;
   }
-  emit('unsave');
+  confirmingRemove.value = true;
+  confirmTimer = setTimeout(() => {
+    confirmingRemove.value = false;
+  }, 3000);
 }
 
 // AI vs original toggle only swaps the summary paragraph. It's offered when
@@ -76,6 +79,8 @@ onMounted(async () => {
   await nextTick();
   measureOverflow();
 });
+
+onBeforeUnmount(() => clearTimeout(confirmTimer));
 </script>
 
 <template>
@@ -119,9 +124,7 @@ onMounted(async () => {
     </button>
 
     <div class="paper-actions">
-      <!-- Daily presentation: thumb-up / sad-face vote icons. Used by real
-           daily cards, and by saved cards flipped to this view. -->
-      <template v-if="viewMode === 'daily'">
+      <template v-if="context === 'daily'">
         <button
           class="icon-btn"
           :class="{ active: saved }"
@@ -153,29 +156,11 @@ onMounted(async () => {
             </g>
           </svg>
         </button>
-        <!-- Saved cards: flip back to the saved presentation. -->
-        <button
-          v-if="context === 'saved'"
-          class="ghost sm"
-          title="Show saved view"
-          @click="viewMode = 'saved'"
-        >
-          Saved view
-        </button>
       </template>
-
-      <!-- Saved presentation: view-toggle + a double-check Remove. -->
       <template v-else>
         <button
           class="ghost sm"
-          title="Show daily view"
-          @click="viewMode = 'daily'"
-        >
-          Daily view
-        </button>
-        <button
-          class="ghost sm remove"
-          :class="{ confirming: confirmingRemove }"
+          :class="{ 'confirm-danger': confirmingRemove }"
           @click="onRemoveClick"
           @blur="confirmingRemove = false"
         >

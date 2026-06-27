@@ -239,8 +239,6 @@ onBeforeUnmount(() => observer?.disconnect());
                 :key="p.id"
                 :paper="p"
                 context="saved"
-                @save="save(p)"
-                @dismiss="dismiss(p)"
                 @unsave="unsave(p)"
               />
             </div>

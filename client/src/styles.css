@@ -776,14 +776,14 @@ button.ghost.active {
   color: var(--maroon);
 }
 
-/* Double-check Remove: the armed (second-click) state turns maroon. */
-button.remove.confirming {
+/* Armed state of the two-step Remove confirm. */
+button.confirm-danger {
   background: var(--maroon);
   border-color: var(--maroon);
   color: #fff;
 }
 
-button.remove.confirming:hover:not(:disabled) {
+button.confirm-danger:hover:not(:disabled) {
   background: var(--maroon);
   border-color: var(--maroon);
 }
