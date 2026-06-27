@@ -1,0 +1,124 @@
+// Reporter orchestrator: collect candidates for each subscribed scope, curate
+// them, and store the result via the existing importArchiveDay(). Independent
+// Node port of run_digest / gather_scope_candidates from the reference tool.
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fetchQuery, parseAtom } from './arxiv.js';
+import { curate } from './curate.js';
+import { scopeWithDefaults } from './config.js';
+import { scopesWithSubscribers } from '../subscriptions/queries.js';
+import { importArchiveDay, recentArchivedExternalIds } from '../digest/queries.js';
+
+const log = (...parts) => console.log('[reporter]', ...parts);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Asia/Shanghai is a fixed UTC+8 offset (no DST), matching the reference tool's
+// APP_TZ. Digests are dated by this clock so they line up across runs.
+const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function shanghaiDateStr(date = new Date()) {
+  return new Date(date.getTime() + SHANGHAI_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+// cutoff = today (Shanghai) minus `days`, as 'YYYY-MM-DD'.
+function cutoffDateStr(days) {
+  const ms = Date.now() + SHANGHAI_OFFSET_MS - days * 24 * 60 * 60 * 1000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function recentEnough(published, lookbackDays) {
+  const dt = Date.parse(published);
+  if (Number.isNaN(dt)) return true;
+  return dt >= Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
+}
+
+/**
+ * Run every query in a scope, merge + dedup by arXiv id, keep the newest batch
+ * (or recent window), drop already-archived ids, and cap to max_candidates.
+ */
+async function gatherCandidates(scope, archivedIds, cfg) {
+  const seen = new Map();
+  for (let i = 0; i < scope.queries.length; i++) {
+    const query = scope.queries[i];
+    log(`范围[${scope.name}] 查询 ${i + 1}/${scope.queries.length}: ${query}`);
+    const papers = parseAtom(await fetchQuery(query, scope.max_candidates, scope, cfg));
+    for (const paper of papers) {
+      if (!seen.has(paper.id)) seen.set(paper.id, paper);
+    }
+    if (i < scope.queries.length - 1) await sleep(scope.query_delay_seconds * 1000);
+  }
+
+  let candidates = [...seen.values()].sort((a, b) =>
+    (b.published || '').localeCompare(a.published || '')
+  );
+
+  if (scope.same_day_only) {
+    const dates = candidates.map((p) => (p.published || '').slice(0, 10)).filter(Boolean);
+    if (dates.length) {
+      const newest = dates.reduce((a, b) => (a > b ? a : b));
+      candidates = candidates.filter((p) => (p.published || '').slice(0, 10) === newest);
+      log(`范围[${scope.name}] 最新批次: ${newest}, ${candidates.length} 篇`);
+    }
+  } else {
+    const recent = candidates.filter((p) => recentEnough(p.published, scope.lookback_days));
+    if (recent.length >= scope.top_n) candidates = recent;
+  }
+
+  if (archivedIds.size) {
+    const before = candidates.length;
+    candidates = candidates.filter((p) => !archivedIds.has(p.id));
+    if (before !== candidates.length) {
+      log(`范围[${scope.name}] 去重: 排除 ${before - candidates.length} 篇, 剩 ${candidates.length} 篇`);
+    }
+  }
+
+  return candidates.slice(0, scope.max_candidates);
+}
+
+/**
+ * Generate today's digest for all subscribed scopes and store it.
+ * Returns { date, scopes: [{ name, candidates, items }] } summary counts.
+ */
+export async function runReporter(cfg) {
+  const dateStr = shanghaiDateStr();
+  const catalog = scopesWithSubscribers();
+  if (!catalog.length) {
+    log('没有任何被订阅的 scope, 跳过');
+    return { date: dateStr, scopes: [] };
+  }
+
+  log(`开始生成 ${dateStr} 日报, 共 ${catalog.length} 个被订阅范围`);
+  const scopeResults = [];
+  const summary = [];
+
+  for (const raw of catalog) {
+    const scope = scopeWithDefaults(raw, cfg);
+    log(`处理范围[${scope.name}]...`);
+    const archivedIds = recentArchivedExternalIds(cutoffDateStr(scope.dedup_days));
+    const candidates = await gatherCandidates(scope, archivedIds, cfg);
+    log(`范围[${scope.name}] 候选数: ${candidates.length}`);
+    const items = candidates.length ? await curate(scope, candidates, cfg) : [];
+    log(`范围[${scope.name}] 入选数: ${items.length}`);
+    scopeResults.push({ scope, items });
+    summary.push({ name: scope.name, candidates: candidates.length, items: items.length });
+  }
+
+  const day = { date: dateStr, scopes: scopeResults };
+  const res = importArchiveDay(day);
+  log(`已写入数据库 ${res.date}: ${res.scopes} 个范围, ${res.papers} 篇论文, ${res.links} 条关联`);
+
+  if (cfg.archiveDir) {
+    try {
+      const dir = path.resolve(cfg.archiveDir);
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `${dateStr}.json`);
+      fs.writeFileSync(file, JSON.stringify(day, null, 2), 'utf8');
+      log('已存档 JSON:', file);
+    } catch (err) {
+      log('存档 JSON 失败 (忽略):', err.message);
+    }
+  }
+
+  return { date: dateStr, scopes: summary };
+}

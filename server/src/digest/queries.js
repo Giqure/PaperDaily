@@ -44,6 +44,16 @@ function s() {
         VALUES
           (@daily_scope_id, @paper_id, @rank, @tag, @tldr, @position, @zh_summary, @highlights, @code)
       `),
+
+      // External ids of papers already stored under any daily scope on/after a
+      // cutoff date — used by the reporter to avoid re-surfacing recent papers.
+      recentExternalIds: db.prepare(`
+        SELECT DISTINCT p.external_id AS id
+        FROM scope_papers sp
+        JOIN daily_scopes ds ON ds.id = sp.daily_scope_id
+        JOIN papers p ON p.id = sp.paper_id
+        WHERE ds.digest_date >= @cutoff AND p.external_id IS NOT NULL
+      `),
     };
   }
   return stmts;
@@ -113,6 +123,16 @@ export function addScopePaper(dailyScopeId, paperId, rank, enrichment) {
     highlights: enrichment.highlights ? JSON.stringify(enrichment.highlights) : null,
     code: enrichment.code ?? null,
   });
+}
+
+/**
+ * External (arXiv) ids of papers already stored under any daily scope on or
+ * after `cutoffDate` ('YYYY-MM-DD'). The reporter uses this to skip papers it
+ * surfaced in the last few days. Returns a Set for O(1) membership checks.
+ */
+export function recentArchivedExternalIds(cutoffDate) {
+  const rows = s().recentExternalIds.all({ cutoff: cutoffDate });
+  return new Set(rows.map((r) => r.id));
 }
 
 /**

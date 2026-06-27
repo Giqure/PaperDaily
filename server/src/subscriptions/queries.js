@@ -51,6 +51,15 @@ function s() {
       listCatalog: db.prepare(
         'SELECT id, name, queries, interests, created_by FROM scopes ORDER BY name'
       ),
+      // Catalog scopes that have at least one subscriber — the set the reporter
+      // actually collects, so arXiv load tracks real demand and user-authored
+      // scopes are picked up automatically.
+      scopesWithSubscribers: db.prepare(`
+        SELECT sc.id, sc.name, sc.queries, sc.interests, sc.created_by
+        FROM scopes sc
+        WHERE EXISTS (SELECT 1 FROM subscriptions sub WHERE sub.scope_id = sc.id)
+        ORDER BY sc.name
+      `),
       insertScope: db.prepare(
         'INSERT INTO scopes (name, queries, interests, created_by) VALUES (@name, @queries, @interests, @created_by)'
       ),
@@ -122,6 +131,15 @@ export function countAuthoredScopes(userId) {
 /** The shared scope catalog. `createdBy` is null for seeded scopes. */
 export function listCatalog() {
   return s().listCatalog.all().map(scopeToPublic);
+}
+
+/**
+ * Catalog scopes with at least one subscriber. Returned in the public shape
+ * (queries parsed to an array), which is what the reporter feeds into its
+ * collection pipeline.
+ */
+export function scopesWithSubscribers() {
+  return s().scopesWithSubscribers.all().map(scopeToPublic);
 }
 
 export function getScope(scopeId) {

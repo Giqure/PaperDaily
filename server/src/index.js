@@ -15,12 +15,17 @@ import { csrfOriginCheck } from './auth/csrf.js';
 import authRoutes from './auth/routes.js';
 import subscriptionRoutes from './subscriptions/routes.js';
 import paperRoutes from './papers/routes.js';
+import { reporterConfig } from './reporter/config.js';
+import { startScheduler } from './reporter/scheduler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Apply pending DB migrations before accepting requests.
 const schemaVersion = migrate();
 console.log(`Database ready (schema v${schemaVersion})`);
+
+// Arm the daily reporter timer (no-op unless REPORTER_ENABLED).
+const stopScheduler = startScheduler(reporterConfig());
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -122,5 +127,8 @@ server.on('error', (err) => {
 
 // Release the port cleanly on shutdown so --watch restarts don't collide.
 for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => server.close(() => process.exit(0)));
+  process.on(signal, () => {
+    stopScheduler();
+    server.close(() => process.exit(0));
+  });
 }
