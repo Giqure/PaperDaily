@@ -107,6 +107,80 @@ const migrations = [
       CREATE INDEX idx_user_papers_user_state ON user_papers(user_id, state);
     `);
   },
+
+  // 0005 — curated keyword library + custom-keyword flag
+  (d) => {
+    d.exec(`
+      CREATE TABLE keywords_library (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        keyword    TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      -- Flag a subscription as a user-created ("custom") keyword vs one chosen
+      -- from the library. Decided at insert time and frozen, so the per-user
+      -- custom cap stays stable even if the library changes later.
+      ALTER TABLE subscriptions ADD COLUMN is_custom INTEGER NOT NULL DEFAULT 0;
+    `);
+
+    // Seed the library. Keywords are pre-normalized (trimmed, lowercased) to
+    // match the normalizeKeyword() form used when subscribing.
+    const seed = [
+      'machine learning',
+      'deep learning',
+      'computer vision',
+      'natural language processing',
+      'reinforcement learning',
+      'transformers',
+      'large language models',
+      'diffusion models',
+      'graph neural networks',
+      'generative models',
+      'quantum computing',
+      'robotics',
+      'optimization',
+      'federated learning',
+      'self-supervised learning',
+      'multimodal learning',
+      'speech recognition',
+      'recommender systems',
+      'time series',
+      'causal inference',
+    ];
+    const insLib = d.prepare('INSERT INTO keywords_library (keyword) VALUES (?)');
+    for (const k of seed) insLib.run(k);
+
+    // Backfill: any existing subscription whose keyword isn't in the library is
+    // a custom keyword.
+    d.exec(`
+      UPDATE subscriptions SET is_custom = 1
+      WHERE keyword NOT IN (SELECT keyword FROM keywords_library);
+    `);
+  },
+
+  // 0006 — keywords become a shared library contributed by users
+  (d) => {
+    // Attribute library keywords to their author. NULL = system/seeded. On user
+    // deletion the keyword stays in the shared library but loses attribution.
+    d.exec(`
+      ALTER TABLE keywords_library
+        ADD COLUMN created_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      CREATE INDEX idx_keywords_library_created_by ON keywords_library(created_by);
+    `);
+
+    // Migrate previously-private custom keywords into the shared library,
+    // attributed to the user who first introduced them. INSERT OR IGNORE guards
+    // the rare case where two users coined the same custom keyword.
+    d.exec(`
+      INSERT OR IGNORE INTO keywords_library (keyword, created_by)
+      SELECT keyword, MIN(user_id) FROM subscriptions
+      WHERE is_custom = 1 GROUP BY keyword;
+    `);
+
+    // Authorship now lives on the library, so the per-subscription flag is
+    // redundant. Derive "custom" via a join to keywords_library instead.
+    d.exec('ALTER TABLE subscriptions DROP COLUMN is_custom;');
+  },
 ];
 
 import { randomUUID } from 'node:crypto';
