@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { hashPassword, verifyPassword } from './password.js';
 import { createUser, findByEmail, toPublic } from '../users/queries.js';
-import { loginLimiter, signupLimiter } from './rate-limit.js';
+import { loginLimiter, signupLimiter, checkEmailLimiter } from './rate-limit.js';
 
 const router = Router();
 
@@ -76,6 +76,24 @@ router.post('/login', loginLimiter, async (req, res) => {
     return res.status(500).json({ error: 'Could not log in.' });
   }
   res.json({ user: toPublic(user) });
+});
+
+/**
+ * POST /api/auth/check-email — does this email already have an account?
+ * Lets the login page decide whether to prompt for login or for signup.
+ *
+ * NOTE: this deliberately reveals whether an email is registered. The signup
+ * route already leaks the same fact via its 409, so this is not a new exposure
+ * — but it makes probing easier, hence checkEmailLimiter throttles it. If
+ * enumeration ever becomes a real concern, replace this with an email-link
+ * verification flow instead of a synchronous existence check.
+ */
+router.post('/check-email', checkEmailLimiter, (req, res) => {
+  const email = String(req.body?.email ?? '').trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) {
+    return res.status(400).json({ error: 'A valid email is required.' });
+  }
+  res.json({ registered: !!findByEmail(email) });
 });
 
 /** POST /api/auth/logout — destroy the session. */

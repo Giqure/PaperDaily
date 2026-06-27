@@ -2,12 +2,10 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { auth } from './store.js';
 import Home from './views/Home.vue';
 import Login from './views/Login.vue';
-import Signup from './views/Signup.vue';
 
 const routes = [
   { path: '/', name: 'home', component: Home, meta: { requiresAuth: true } },
   { path: '/login', name: 'login', component: Login, meta: { guestOnly: true } },
-  { path: '/signup', name: 'signup', component: Signup, meta: { guestOnly: true } },
 ];
 
 const router = createRouter({

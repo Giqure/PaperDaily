@@ -25,3 +25,16 @@ export const signupLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many accounts created from this address. Try again later.' },
 });
+
+/**
+ * Limiter for the email-existence probe used by the login page to decide
+ * whether to show the signup form. This endpoint reveals whether an email is
+ * registered, so throttle it to make bulk enumeration impractical.
+ */
+export const checkEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 20, // 20 probes per window per IP
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Try again later.' },
+});

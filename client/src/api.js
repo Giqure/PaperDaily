@@ -31,4 +31,6 @@ export const authApi = {
     request('/auth/login', { method: 'POST', body: { email, password } }),
   logout: () => request('/auth/logout', { method: 'POST' }),
   me: () => request('/auth/me'),
+  checkEmail: (email) =>
+    request('/auth/check-email', { method: 'POST', body: { email } }),
 };

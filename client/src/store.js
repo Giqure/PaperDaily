@@ -14,11 +14,19 @@ async function init() {
   try {
     const { user } = await authApi.me();
     state.user = user;
-  } catch {
-    state.user = null; // 401 = not logged in; any error means "anonymous"
+  } catch (err) {
+    // Only a 401 definitively means "not authenticated" — clear the user.
+    // A 5xx / network error means we *don't know*; leave existing state alone
+    // rather than silently logging a real user out on a transient hiccup.
+    if (err.status === 401) state.user = null;
   } finally {
     state.ready = true;
   }
+}
+
+async function checkEmail(email) {
+  const { registered } = await authApi.checkEmail(email);
+  return registered;
 }
 
 async function signup(email, password, name) {
@@ -44,4 +52,5 @@ export const auth = {
   signup,
   login,
   logout,
+  checkEmail,
 };
