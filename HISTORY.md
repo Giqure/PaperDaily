@@ -35,4 +35,4 @@ files:
 Sanity check. 
 When logging in, session regenerates.
 SESSION_SECRET is checked when production mode.
-TODO: CSRF
+TODO: CSRF ratelimit

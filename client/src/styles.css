@@ -12,21 +12,158 @@ body {
   justify-content: center;
   background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%);
   color: #fff;
+  padding: 1.5rem;
 }
 
-.welcome {
+#app {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* --- Home --- */
+.home {
   text-align: center;
   padding: 2rem;
 }
 
-.welcome h1 {
+.home h1 {
   font-size: 3rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   margin-bottom: 0.75rem;
 }
 
-.welcome p {
+.home .sub {
   font-size: 1.25rem;
   opacity: 0.85;
+}
+
+.account {
+  margin-top: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+  opacity: 0.9;
+}
+
+/* --- Auth card --- */
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 2.25rem 2rem;
+  backdrop-filter: blur(8px);
+}
+
+.auth-card h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.auth-card .sub {
+  margin-top: 0.4rem;
+  margin-bottom: 1.75rem;
+  font-size: 0.95rem;
+  opacity: 0.75;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+label .optional {
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+input {
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.2);
+  color: #fff;
+  font-size: 0.95rem;
+  transition: border-color 0.15s ease;
+}
+
+input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+input:focus {
+  outline: none;
+  border-color: #63b3ed;
+}
+
+button {
+  margin-top: 0.25rem;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: 8px;
+  background: #3182ce;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  background: #2b6cb0;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button.ghost {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+button.ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.error {
+  color: #feb2b2;
+  font-size: 0.85rem;
+  margin: -0.3rem 0 0;
+}
+
+.switch {
+  margin-top: 1.5rem;
+  text-align: center;
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
+.switch a {
+  color: #90cdf4;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.switch a:hover {
+  text-decoration: underline;
 }
