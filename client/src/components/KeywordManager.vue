@@ -2,7 +2,14 @@
 import { ref, computed, onMounted } from 'vue';
 import { subscriptionsApi } from '../api.js';
 
-const emit = defineEmits(['changed']);
+const props = defineProps({
+  // Scope name currently in view (scrollspy) — highlighted in the nav.
+  activeScope: { type: String, default: '' },
+  // Set of scope names that have papers today — others are dimmed.
+  scopesWithPapers: { type: Object, default: () => new Set() },
+});
+
+const emit = defineEmits(['changed', 'navigate']);
 
 const subscriptions = ref([]);
 const catalog = ref([]);
@@ -10,6 +17,10 @@ const authored = ref({ used: 0, max: 3 });
 const loading = ref(true);
 const submitting = ref(false);
 const error = ref('');
+
+// Management UI (catalog picker, author form, delete buttons) is collapsed by
+// default — the sidebar reads as a clean scope nav until you choose to edit.
+const editing = ref(false);
 
 // Create-scope form.
 const showForm = ref(false);
@@ -26,6 +37,10 @@ const available = computed(() =>
 );
 
 const atAuthorCap = computed(() => authored.value.used >= authored.value.max);
+
+function hasPapers(name) {
+  return props.scopesWithPapers.has(name);
+}
 
 async function load() {
   loading.value = true;
@@ -107,118 +122,130 @@ defineExpose({ reload: load });
   <section class="panel">
     <header class="panel-head">
       <h2>Scopes</h2>
-      <span class="budget" :class="{ full: atAuthorCap }">
-        {{ authored.used }}/{{ authored.max }} authored
-      </span>
+      <button class="link-btn" @click="editing = !editing">
+        {{ editing ? 'Done' : 'Edit' }}
+      </button>
     </header>
-
-    <p class="hint">
-      Subscribe to a scope to shape your daily digest. Each scope is a set of
-      arXiv queries the system collects against every morning. Pick from the
-      catalog, or author a new scope — it joins the shared catalog for everyone,
-      and you can introduce up to {{ authored.max }}.
-    </p>
-
-    <p v-if="error" class="error">{{ error }}</p>
 
     <div v-if="loading" class="muted">Loading…</div>
 
     <template v-else>
-      <!-- Followed scopes -->
-      <div v-if="subscriptions.length" class="chips">
-        <span
+      <p v-if="error" class="error">{{ error }}</p>
+
+      <!-- Followed scopes = scrollspy nav -->
+      <nav v-if="subscriptions.length" class="scope-nav">
+        <div
           v-for="sub in subscriptions"
           :key="sub.id"
-          class="chip"
-          :class="{ custom: sub.scope.isCustom }"
-          :title="sub.scope.interests"
+          class="scope-nav-item"
+          :class="{
+            active: sub.scope.name === activeScope,
+            empty: !hasPapers(sub.scope.name),
+          }"
         >
-          {{ sub.scope.name }}
           <button
+            class="scope-nav-link"
+            :disabled="!hasPapers(sub.scope.name)"
+            :title="sub.scope.interests"
+            @click="emit('navigate', sub.scope.name)"
+          >
+            <span class="scope-nav-name">{{ sub.scope.name }}</span>
+          </button>
+          <button
+            v-if="editing"
             class="chip-x"
             title="Unfollow"
-            @click="remove(sub)"
             aria-label="Unfollow scope"
+            @click="remove(sub)"
           >
             ×
           </button>
-        </span>
-      </div>
+        </div>
+      </nav>
       <p v-else class="muted">You're not following any scopes yet.</p>
 
-      <!-- Catalog picker -->
-      <div v-if="available.length" class="library">
-        <h3>From the catalog</h3>
-        <div class="chips">
-          <button
-            v-for="sc in available"
-            :key="sc.id"
-            class="chip add"
-            :disabled="submitting"
-            :title="sc.interests"
-            @click="follow(sc.id)"
-          >
-            + {{ sc.name }}
-          </button>
+      <!-- Management — collapsed unless editing -->
+      <template v-if="editing">
+        <div class="edit-meta">
+          <span class="budget" :class="{ full: atAuthorCap }">
+            {{ authored.used }}/{{ authored.max }} authored
+          </span>
         </div>
-      </div>
 
-      <!-- Author a new scope -->
-      <div class="author">
-        <button
-          v-if="!showForm"
-          class="ghost sm"
-          :disabled="atAuthorCap"
-          :title="atAuthorCap ? 'You have reached your authored-scope limit.' : ''"
-          @click="showForm = true"
-        >
-          + Author a scope
-        </button>
-
-        <form v-else class="scope-form" @submit.prevent="createScope">
-          <label>
-            Name
-            <input
-              v-model="form.name"
-              type="text"
-              maxlength="80"
-              placeholder="e.g. 灵巧手与操作"
-              :disabled="submitting"
-            />
-          </label>
-          <label>
-            arXiv queries <small>(one per line)</small>
-            <textarea
-              v-model="form.queries"
-              rows="4"
-              placeholder="all:dexterous AND all:manipulation&#10;all:grasping"
-              :disabled="submitting"
-            />
-          </label>
-          <label>
-            Interests <small>(optional, comma-separated)</small>
-            <textarea
-              v-model="form.interests"
-              rows="2"
-              placeholder="dexterous hand, manipulation, grasping"
-              :disabled="submitting"
-            />
-          </label>
-          <div class="form-actions">
-            <button type="submit" :disabled="submitting">
-              {{ submitting ? 'Creating…' : 'Create & follow' }}
-            </button>
+        <!-- Catalog picker -->
+        <div v-if="available.length" class="library">
+          <h3>From the catalog</h3>
+          <div class="chips">
             <button
-              type="button"
-              class="ghost sm"
+              v-for="sc in available"
+              :key="sc.id"
+              class="chip add"
               :disabled="submitting"
-              @click="showForm = false"
+              :title="sc.interests"
+              @click="follow(sc.id)"
             >
-              Cancel
+              + {{ sc.name }}
             </button>
           </div>
-        </form>
-      </div>
+        </div>
+
+        <!-- Author a new scope -->
+        <div class="author">
+          <button
+            v-if="!showForm"
+            class="ghost sm"
+            :disabled="atAuthorCap"
+            :title="atAuthorCap ? 'You have reached your authored-scope limit.' : ''"
+            @click="showForm = true"
+          >
+            + Author a scope
+          </button>
+
+          <form v-else class="scope-form" @submit.prevent="createScope">
+            <label>
+              Name
+              <input
+                v-model="form.name"
+                type="text"
+                maxlength="80"
+                placeholder="e.g. 灵巧手与操作"
+                :disabled="submitting"
+              />
+            </label>
+            <label>
+              arXiv queries <small>(one per line)</small>
+              <textarea
+                v-model="form.queries"
+                rows="4"
+                placeholder="all:dexterous AND all:manipulation&#10;all:grasping"
+                :disabled="submitting"
+              />
+            </label>
+            <label>
+              Interests <small>(optional, comma-separated)</small>
+              <textarea
+                v-model="form.interests"
+                rows="2"
+                placeholder="dexterous hand, manipulation, grasping"
+                :disabled="submitting"
+              />
+            </label>
+            <div class="form-actions">
+              <button type="submit" :disabled="submitting">
+                {{ submitting ? 'Creating…' : 'Create & follow' }}
+              </button>
+              <button
+                type="button"
+                class="ghost sm"
+                :disabled="submitting"
+                @click="showForm = false"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </template>
     </template>
   </section>
 </template>

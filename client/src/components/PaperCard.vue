@@ -1,33 +1,95 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch, nextTick, onMounted } from 'vue';
 
 const props = defineProps({
   paper: { type: Object, required: true },
-  // 'daily' shows Save + Dismiss; 'saved' shows Unsave.
+  // 'daily' shows the up/down vote icons; 'saved' shows Remove.
   context: { type: String, default: 'daily' },
 });
 
 const emit = defineEmits(['save', 'dismiss', 'unsave']);
 
-// authors is a comma-joined string from the server; show the first few.
+// authors is a comma-joined string from the server; show only the first, with
+// "et al." when there are more.
 const authorList = computed(() => {
   if (!props.paper.authors) return '';
-  const names = props.paper.authors.split(',').map((a) => a.trim());
-  return names.length > 4
-    ? `${names.slice(0, 4).join(', ')} +${names.length - 4}`
-    : names.join(', ');
+  const names = props.paper.authors.split(',').map((a) => a.trim()).filter(Boolean);
+  if (!names.length) return '';
+  return names.length > 1 ? `${names[0]} et al.` : names[0];
 });
 
 const saved = computed(() => props.paper.state === 'saved');
+const dismissed = computed(() => props.paper.state === 'dismissed');
+
+// A saved card can be flipped to render with the daily vote actions instead of
+// the Remove button. Only meaningful when context is 'saved'.
+const viewMode = ref(props.context);
+
+// Removing a saved paper requires a double-check: the first click arms the
+// button, the second confirms. Blurring the button disarms it.
+const confirmingRemove = ref(false);
+function onRemoveClick() {
+  if (!confirmingRemove.value) {
+    confirmingRemove.value = true;
+    return;
+  }
+  emit('unsave');
+}
+
+// AI vs original toggle only swaps the summary paragraph. It's offered when
+// both an AI summary (zhSummary) and the original summary exist; the AI view is
+// the default. The tldr highlight, when present, always shows.
+const hasBothSummaries = computed(
+  () => !!(props.paper.zhSummary && props.paper.summary)
+);
+const showAi = ref(true);
+
+const summaryText = computed(() => {
+  if (props.paper.zhSummary && (showAi.value || !props.paper.summary)) {
+    return props.paper.zhSummary;
+  }
+  return props.paper.summary || '';
+});
+
+// Expand/collapse the summary. The button only appears when the text actually
+// overflows the collapsed (line-clamped) height. We measure against the clamped
+// box, so this is only checked while collapsed.
+const summaryEl = ref(null);
+const expanded = ref(false);
+const overflowing = ref(false);
+
+function measureOverflow() {
+  const el = summaryEl.value;
+  if (!el || expanded.value) return;
+  overflowing.value = el.scrollHeight > el.clientHeight + 1;
+}
+
+// Re-measure after the text changes (AI/Original swap) and on mount. Collapse
+// back to the clamped view when the summary content changes.
+watch(summaryText, async () => {
+  expanded.value = false;
+  await nextTick();
+  measureOverflow();
+});
+
+onMounted(async () => {
+  await nextTick();
+  measureOverflow();
+});
 </script>
 
 <template>
-  <article class="paper">
-    <div v-if="paper.tag || paper.scopes?.length" class="paper-meta">
+  <article class="paper" :class="{ dismissed }">
+    <div v-if="paper.tag || hasBothSummaries" class="paper-meta">
       <span v-if="paper.tag" class="tag">{{ paper.tag }}</span>
-      <span v-for="name in paper.scopes" :key="name" class="scope-pill">
-        {{ name }}
-      </span>
+      <button
+        v-if="hasBothSummaries"
+        class="ai-toggle"
+        :class="{ on: showAi }"
+        @click="showAi = !showAi"
+      >
+        {{ showAi ? 'AI' : 'Original' }}
+      </button>
     </div>
 
     <h3 class="paper-title">
@@ -37,20 +99,88 @@ const saved = computed(() => props.paper.state === 'saved');
       <span v-else>{{ paper.title }}</span>
     </h3>
 
-    <p v-if="paper.tldr" class="paper-tldr">{{ paper.tldr }}</p>
     <p v-if="authorList" class="paper-authors">{{ authorList }}</p>
-    <p v-if="paper.zhSummary" class="paper-abstract">{{ paper.zhSummary }}</p>
-    <p v-else-if="paper.abstract" class="paper-abstract">{{ paper.abstract }}</p>
+
+    <p v-if="paper.tldr" class="paper-tldr">{{ paper.tldr }}</p>
+    <p
+      v-if="summaryText"
+      ref="summaryEl"
+      class="paper-summary"
+      :class="{ expanded }"
+    >
+      {{ summaryText }}
+    </p>
+    <button
+      v-if="summaryText && (overflowing || expanded)"
+      class="summary-toggle"
+      @click="expanded = !expanded"
+    >
+      {{ expanded ? 'Show less ▴' : 'Show more ▾' }}
+    </button>
 
     <div class="paper-actions">
-      <template v-if="context === 'daily'">
-        <button class="ghost sm" :class="{ active: saved }" @click="emit('save')">
-          {{ saved ? '★ Saved' : '☆ Save' }}
+      <!-- Daily presentation: thumb-up / sad-face vote icons. Used by real
+           daily cards, and by saved cards flipped to this view. -->
+      <template v-if="viewMode === 'daily'">
+        <button
+          class="icon-btn"
+          :class="{ active: saved }"
+          title="Save"
+          aria-label="Save"
+          @click="emit('save')"
+        >
+          <!-- thumb up -->
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M2 21h2.5a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H2zm5.5-11.2 4.2-6.3a1.7 1.7 0 0 1 2.9 1.6l-1 4.4h5.1a2 2 0 0 1 2 2.5l-1.9 7A2 2 0 0 1 21 21H9.5a1 1 0 0 1-1-1V10.5a1 1 0 0 1 .2-.6z"
+            />
+          </svg>
         </button>
-        <button class="ghost sm" @click="emit('dismiss')">Dismiss</button>
+        <button
+          class="icon-btn"
+          :class="{ active: dismissed }"
+          title="Dismiss"
+          aria-label="Dismiss"
+          @click="emit('dismiss')"
+        >
+          <!-- sad face -->
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <circle cx="12" cy="12" r="9.2" />
+              <path d="M8.5 15.5c.9-1.1 2-1.7 3.5-1.7s2.6.6 3.5 1.7" />
+              <path d="M9 9.5h.01M15 9.5h.01" />
+            </g>
+          </svg>
+        </button>
+        <!-- Saved cards: flip back to the saved presentation. -->
+        <button
+          v-if="context === 'saved'"
+          class="ghost sm"
+          title="Show saved view"
+          @click="viewMode = 'saved'"
+        >
+          Saved view
+        </button>
       </template>
+
+      <!-- Saved presentation: view-toggle + a double-check Remove. -->
       <template v-else>
-        <button class="ghost sm" @click="emit('unsave')">Remove</button>
+        <button
+          class="ghost sm"
+          title="Show daily view"
+          @click="viewMode = 'daily'"
+        >
+          Daily view
+        </button>
+        <button
+          class="ghost sm remove"
+          :class="{ confirming: confirmingRemove }"
+          @click="onRemoveClick"
+          @blur="confirmingRemove = false"
+        >
+          {{ confirmingRemove ? 'Confirm remove?' : 'Remove' }}
+        </button>
       </template>
     </div>
   </article>

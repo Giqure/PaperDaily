@@ -89,7 +89,9 @@ function toPublic(row) {
     id: row.id,
     externalId: row.external_id,
     title: row.title,
-    abstract: row.abstract,
+    // The original arXiv abstract. Named `summary` to match the generator's
+    // archive JSON (paper.summary); the AI reading lives on `zhSummary`.
+    summary: row.abstract,
     authors: row.authors,
     url: row.url,
     pdfUrl: row.pdf_url ?? null,
