@@ -8,4 +8,4 @@ npm-debug.log*
 *.sqlite-shm
 *.db
 server/data/
-*.md
+HISTORY.md
