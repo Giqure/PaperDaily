@@ -181,6 +181,64 @@ const migrations = [
     // redundant. Derive "custom" via a join to keywords_library instead.
     d.exec('ALTER TABLE subscriptions DROP COLUMN is_custom;');
   },
+
+  // 0007 — daily digest archive: per-day scopes and their selected papers.
+  // Mirrors the archive/*.json shape from the Don_daily_paper_report generator:
+  // a paper's intrinsic fields live on `papers` (deduped by external_id), while
+  // everything that varies per scope (tag, tldr, position, zh_summary,
+  // highlights, code, ranking) lives on `scope_papers` — because the same paper
+  // appears under multiple scopes the same day with different enrichment.
+  (d) => {
+    d.exec(`
+      -- Intrinsic paper fields missing from the original papers table.
+      ALTER TABLE papers ADD COLUMN pdf_url TEXT;
+      ALTER TABLE papers ADD COLUMN github  TEXT;
+
+      -- One row per (date, scope). Holds the scope's config snapshot as used
+      -- that day, since the generator records config per-day and it can drift.
+      CREATE TABLE daily_scopes (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        digest_date         TEXT NOT NULL,          -- 'YYYY-MM-DD'
+        name                TEXT NOT NULL,          -- scope.name
+        queries             TEXT,                   -- JSON array of query strings
+        interests           TEXT,
+        top_n               INTEGER,
+        push_n              INTEGER,
+        max_candidates      INTEGER,
+        query_delay_seconds INTEGER,
+        same_day_only       INTEGER,                -- 0/1
+        lookback_days       INTEGER,
+        dedup_days          INTEGER,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      -- A scope name is unique within a given day.
+      CREATE UNIQUE INDEX idx_daily_scopes_date_name
+        ON daily_scopes(digest_date, name);
+      CREATE INDEX idx_daily_scopes_date ON daily_scopes(digest_date);
+
+      -- Membership: which papers fell under a daily scope, with the
+      -- scope-relative enrichment and the order they were presented in.
+      CREATE TABLE scope_papers (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        daily_scope_id INTEGER NOT NULL REFERENCES daily_scopes(id) ON DELETE CASCADE,
+        paper_id      INTEGER NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+        rank          INTEGER NOT NULL DEFAULT 0,   -- position within the scope
+        tag           TEXT,
+        tldr          TEXT,
+        position      TEXT,
+        zh_summary    TEXT,
+        highlights    TEXT,                         -- JSON array of strings
+        code          TEXT,
+        created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      -- A paper appears at most once per daily scope.
+      CREATE UNIQUE INDEX idx_scope_papers_scope_paper
+        ON scope_papers(daily_scope_id, paper_id);
+      CREATE INDEX idx_scope_papers_paper ON scope_papers(paper_id);
+    `);
+  },
 ];
 
 import { randomUUID } from 'node:crypto';
