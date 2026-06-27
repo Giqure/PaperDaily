@@ -14,3 +14,17 @@ files:
 - - package.json
 - package.json
 - package-lock.json
+
+Add account system. Initialize SQLite.
+files:
+- server\
+- - data\
+- - - (sqlitefiles)
+- - src\
+- - - auth\
+- - - - middleware.js
+- - - - password.js
+- - - - routes.js
+- - - db\
+- - - - index.js
+- - - - migrate.js
