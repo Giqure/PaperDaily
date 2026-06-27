@@ -1,12 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { auth } from './store.js';
 import Index from './views/Index.vue';
-import Dashboard from './views/Dashboard.vue';
+import Space from './views/Space.vue';
 import Login from './views/Login.vue';
 
 const routes = [
   { path: '/', name: 'index', component: Index },
-  { path: '/dashboard', name: 'dashboard', component: Dashboard, meta: { requiresAuth: true } },
+  { path: '/space', name: 'space', component: Space, meta: { requiresAuth: true } },
   { path: '/login', name: 'login', component: Login, meta: { guestOnly: true } },
 ];
 
@@ -24,7 +24,7 @@ router.beforeEach((to) => {
     return { name: 'login', query: { redirect: to.fullPath } };
   }
   if (to.meta.guestOnly && loggedIn) {
-    return { name: 'dashboard' };
+    return { name: 'space' };
   }
   return true;
 });

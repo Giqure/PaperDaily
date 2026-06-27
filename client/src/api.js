@@ -34,3 +34,17 @@ export const authApi = {
   checkEmail: (email) =>
     request('/auth/check-email', { method: 'POST', body: { email } }),
 };
+
+export const subscriptionsApi = {
+  list: () => request('/subscriptions'),
+  library: () => request('/subscriptions/library'),
+  add: (keyword) => request('/subscriptions', { method: 'POST', body: { keyword } }),
+  remove: (id) => request(`/subscriptions/${id}`, { method: 'DELETE' }),
+};
+
+export const papersApi = {
+  daily: () => request('/papers/daily'),
+  saved: () => request('/papers/saved'),
+  setState: (id, state) =>
+    request(`/papers/${id}/state`, { method: 'PUT', body: { state } }),
+};

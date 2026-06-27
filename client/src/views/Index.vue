@@ -10,7 +10,7 @@ const message = ref('Your daily digest of research papers.');
 const loggedIn = computed(() => !!auth.state.user);
 const entry = computed(() =>
   loggedIn.value
-    ? { to: '/dashboard', label: 'Go to dashboard' }
+    ? { to: '/space', label: 'Go to your space' }
     : { to: '/login', label: 'Log in' }
 );
 

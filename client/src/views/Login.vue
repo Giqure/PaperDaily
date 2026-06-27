@@ -27,7 +27,7 @@ function safeRedirect() {
   if (typeof r === 'string' && /^\/(?!\/)/.test(r) && !r.includes('\\')) {
     return r;
   }
-  return '/dashboard';
+  return '/space';
 }
 
 function go() {
