@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth/middleware.js';
 import { writeLimiter } from '../auth/rate-limit.js';
-import { keywordsFor } from '../subscriptions/queries.js';
+import { listSubscriptions } from '../subscriptions/queries.js';
 import {
-  dailyForKeywords,
+  dailyForUser,
   listSaved,
   paperExists,
   setPaperState,
@@ -19,15 +19,15 @@ const MAX_DAILY_LIMIT = 100;
 router.use(requireAuth);
 
 /**
- * GET /api/papers/daily — today's digest: papers matching the user's followed
- * keywords, with dismissed ones filtered out. Empty if the user follows no
- * keywords.
+ * GET /api/papers/daily — today's digest: curated papers under the scopes the
+ * user follows, from the latest collected digest date, with dismissed ones
+ * filtered out. Empty if the user follows no scopes.
  */
 router.get('/daily', (req, res) => {
-  const keywords = keywordsFor(req.user.id);
   const limit = clampLimit(req.query.limit, DEFAULT_DAILY_LIMIT, MAX_DAILY_LIMIT);
-  const papers = dailyForKeywords(req.user.id, keywords, limit);
-  res.json({ papers, keywords });
+  const { date, papers } = dailyForUser(req.user.id, limit);
+  const scopes = listSubscriptions(req.user.id).map((sub) => sub.scope.name);
+  res.json({ papers, scopes, date });
 });
 
 /** GET /api/papers/saved — papers the user has saved. */

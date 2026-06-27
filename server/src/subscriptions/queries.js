@@ -6,133 +6,166 @@ let stmts;
 function s() {
   if (!stmts) {
     stmts = {
-      // A subscription joined to its library entry, so we can tell the client
-      // whether the keyword is user-contributed ("custom") and whether *this*
-      // user is its author.
+      // A user's followed scopes, joined to the catalog so we can tell the
+      // client the scope's rule and whether this user authored it.
       listByUser: db.prepare(`
-        SELECT sub.id, sub.keyword, sub.created_at,
-               lib.created_by AS author_id
+        SELECT sub.id, sub.created_at,
+               sc.id AS scope_id, sc.name, sc.queries, sc.interests,
+               sc.created_by AS author_id
         FROM subscriptions sub
-        LEFT JOIN keywords_library lib ON lib.keyword = sub.keyword
+        JOIN scopes sc ON sc.id = sub.scope_id
         WHERE sub.user_id = ?
         ORDER BY sub.created_at DESC, sub.id DESC
       `),
       insertSub: db.prepare(
-        'INSERT INTO subscriptions (user_id, keyword) VALUES (@user_id, @keyword)'
+        'INSERT INTO subscriptions (user_id, scope_id) VALUES (@user_id, @scope_id)'
       ),
       subById: db.prepare(`
-        SELECT sub.id, sub.user_id, sub.keyword, sub.created_at,
-               lib.created_by AS author_id
+        SELECT sub.id, sub.user_id, sub.created_at,
+               sc.id AS scope_id, sc.name, sc.queries, sc.interests,
+               sc.created_by AS author_id
         FROM subscriptions sub
-        LEFT JOIN keywords_library lib ON lib.keyword = sub.keyword
+        JOIN scopes sc ON sc.id = sub.scope_id
         WHERE sub.id = ?
       `),
       subRowById: db.prepare(
-        'SELECT id, user_id, keyword FROM subscriptions WHERE id = ?'
+        'SELECT id, user_id, scope_id FROM subscriptions WHERE id = ?'
       ),
       deleteOwned: db.prepare(
         'DELETE FROM subscriptions WHERE id = @id AND user_id = @user_id'
       ),
-      keywordsByUser: db.prepare(
-        'SELECT keyword FROM subscriptions WHERE user_id = ?'
-      ),
       countByUser: db.prepare(
         'SELECT COUNT(*) AS n FROM subscriptions WHERE user_id = ?'
       ),
+      subscribedScopeIds: db.prepare(
+        'SELECT scope_id FROM subscriptions WHERE user_id = ?'
+      ),
 
-      // Library
-      libraryGet: db.prepare(
-        'SELECT id, keyword, created_by FROM keywords_library WHERE keyword = ?'
+      // Catalog
+      scopeById: db.prepare(
+        'SELECT id, name, queries, interests, created_by FROM scopes WHERE id = ?'
       ),
-      listLibrary: db.prepare(
-        'SELECT id, keyword, created_by FROM keywords_library ORDER BY keyword'
+      scopeByName: db.prepare(
+        'SELECT id, name, queries, interests, created_by FROM scopes WHERE name = ?'
       ),
-      insertLibrary: db.prepare(
-        'INSERT INTO keywords_library (keyword, created_by) VALUES (@keyword, @created_by)'
+      listCatalog: db.prepare(
+        'SELECT id, name, queries, interests, created_by FROM scopes ORDER BY name'
       ),
-      deleteLibrary: db.prepare('DELETE FROM keywords_library WHERE id = ?'),
+      insertScope: db.prepare(
+        'INSERT INTO scopes (name, queries, interests, created_by) VALUES (@name, @queries, @interests, @created_by)'
+      ),
+      deleteScope: db.prepare('DELETE FROM scopes WHERE id = ?'),
       countAuthored: db.prepare(
-        'SELECT COUNT(*) AS n FROM keywords_library WHERE created_by = ?'
+        'SELECT COUNT(*) AS n FROM scopes WHERE created_by = ?'
       ),
       subscriberCount: db.prepare(
-        'SELECT COUNT(*) AS n FROM subscriptions WHERE keyword = ?'
+        'SELECT COUNT(*) AS n FROM subscriptions WHERE scope_id = ?'
       ),
     };
   }
   return stmts;
 }
 
-function toPublic(row) {
+// Parse the JSON queries column into an array, tolerating bad/empty data.
+function parseQueries(raw) {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function scopeToPublic(row) {
   if (!row) return null;
-  // A keyword is "custom" when it has an author (created_by is non-null);
-  // seeded library keywords have a null author.
   return {
     id: row.id,
-    keyword: row.keyword,
-    isCustom: row.author_id != null,
+    name: row.name,
+    queries: parseQueries(row.queries),
+    interests: row.interests ?? '',
+    // A scope is "custom" when it has an author; seeded scopes have none.
+    isCustom: row.created_by != null,
+    createdBy: row.created_by ?? null,
+  };
+}
+
+// A subscription row carries both its own id/created_at and the joined scope.
+function subToPublic(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
     createdAt: row.created_at,
+    scope: scopeToPublic({
+      id: row.scope_id,
+      name: row.name,
+      queries: row.queries,
+      interests: row.interests,
+      created_by: row.author_id,
+    }),
   };
 }
 
 export function listSubscriptions(userId) {
-  return s().listByUser.all(userId).map(toPublic);
+  return s().listByUser.all(userId).map(subToPublic);
 }
 
 export function countSubscriptions(userId) {
   return s().countByUser.get(userId).n;
 }
 
-/** How many library keywords this user has authored (their live contributions). */
-export function countAuthoredKeywords(userId) {
+/** How many catalog scopes this user has authored (their live contributions). */
+export function countAuthoredScopes(userId) {
   return s().countAuthored.get(userId).n;
 }
 
-/** The shared keyword library. `createdBy` is null for seeded keywords. */
-export function listLibrary() {
-  return s()
-    .listLibrary.all()
-    .map((r) => ({ id: r.id, keyword: r.keyword, createdBy: r.created_by }));
+/** The shared scope catalog. `createdBy` is null for seeded scopes. */
+export function listCatalog() {
+  return s().listCatalog.all().map(scopeToPublic);
 }
 
-/** Is this (already-normalized) keyword already in the shared library? */
-export function isLibraryKeyword(keyword) {
-  return !!s().libraryGet.get(keyword);
+export function getScope(scopeId) {
+  return scopeToPublic(s().scopeById.get(scopeId));
 }
 
-/** Raw keyword strings for a user — used to build the digest query. */
-export function keywordsFor(userId) {
-  return s().keywordsByUser.all(userId).map((r) => r.keyword);
+/** Scope ids a user follows — used to build the daily feed. */
+export function subscribedScopeIds(userId) {
+  return s().subscribedScopeIds.all(userId).map((r) => r.scope_id);
 }
 
 /**
- * Subscribe a user to a keyword.
- *
- * If the keyword isn't in the shared library yet, it's contributed to the
- * library attributed to this user (the caller must have already checked the
- * authored-keyword cap). Both the library insert and the subscription insert
- * happen in one transaction so we never leave a contributed keyword with no
- * subscriber on a mid-way failure.
+ * Author a new catalog scope attributed to a user. The caller must have already
+ * checked the authored-scope cap. Returns:
+ *   { scope }            on success
+ *   { duplicateName: true } if a scope with that name already exists
+ */
+export function createScope(userId, { name, queries, interests }) {
+  const existing = s().scopeByName.get(name);
+  if (existing) return { duplicateName: true };
+  const info = s().insertScope.run({
+    name,
+    queries: JSON.stringify(queries),
+    interests: interests || null,
+    created_by: userId,
+  });
+  return { scope: scopeToPublic(s().scopeById.get(info.lastInsertRowid)) };
+}
+
+/**
+ * Subscribe a user to an existing catalog scope.
  *
  * Returns:
- *   { subscription }            on success
- *   { duplicate: true }         if the user already follows this keyword
+ *   { subscription }     on success
+ *   { missing: true }    if the scope id doesn't exist
+ *   { duplicate: true }  if the user already follows this scope
  */
-export const subscribe = db.transaction((userId, keyword) => {
-  let lib = s().libraryGet.get(keyword);
-  if (!lib) {
-    const info = s().insertLibrary.run({ keyword, created_by: userId });
-    lib = { id: info.lastInsertRowid, keyword, created_by: userId };
-  }
-
+export const subscribe = db.transaction((userId, scopeId) => {
+  if (!s().scopeById.get(scopeId)) return { missing: true };
   try {
-    const info = s().insertSub.run({ user_id: userId, keyword });
-    return { subscription: toPublic(s().subById.get(info.lastInsertRowid)) };
+    const info = s().insertSub.run({ user_id: userId, scope_id: scopeId });
+    return { subscription: subToPublic(s().subById.get(info.lastInsertRowid)) };
   } catch (err) {
     if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-      // Already subscribed. If we just created the library entry for this
-      // keyword we'd be rolling back anyway (the transaction throws below),
-      // but a duplicate only happens when the keyword already existed, so the
-      // library row we found was pre-existing — nothing to clean up.
       return { duplicate: true };
     }
     throw err;
@@ -141,9 +174,8 @@ export const subscribe = db.transaction((userId, keyword) => {
 
 /**
  * Remove a user's subscription. If that was the last subscriber to a
- * user-contributed keyword, the keyword is garbage-collected from the shared
- * library (freeing the author's contribution slot). Seeded keywords (no author)
- * are never removed.
+ * user-authored scope, the scope is garbage-collected from the catalog (freeing
+ * the author's contribution slot). Seeded scopes (no author) are never removed.
  *
  * Returns true if a subscription was removed.
  */
@@ -153,11 +185,11 @@ export const unsubscribe = db.transaction((userId, id) => {
 
   s().deleteOwned.run({ id, user_id: userId });
 
-  const lib = s().libraryGet.get(sub.keyword);
-  if (lib && lib.created_by != null) {
-    const remaining = s().subscriberCount.get(sub.keyword).n;
+  const scope = s().scopeById.get(sub.scope_id);
+  if (scope && scope.created_by != null) {
+    const remaining = s().subscriberCount.get(sub.scope_id).n;
     if (remaining === 0) {
-      s().deleteLibrary.run(lib.id);
+      s().deleteScope.run(scope.id);
     }
   }
   return true;

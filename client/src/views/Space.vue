@@ -12,7 +12,7 @@ const loggingOut = ref(false);
 const tab = ref('daily'); // 'daily' | 'saved'
 const daily = ref([]);
 const saved = ref([]);
-const dailyKeywords = ref([]);
+const dailyScopes = ref([]);
 const loadingDaily = ref(false);
 const loadingSaved = ref(false);
 const error = ref('');
@@ -23,7 +23,7 @@ async function loadDaily() {
   try {
     const res = await papersApi.daily();
     daily.value = res.papers;
-    dailyKeywords.value = res.keywords;
+    dailyScopes.value = res.scopes;
   } catch (err) {
     error.value = err.message;
   } finally {
@@ -119,11 +119,11 @@ onMounted(loadDaily);
       <div v-show="tab === 'daily'">
         <div v-if="loadingDaily" class="muted">Loading papers…</div>
         <template v-else>
-          <p v-if="!dailyKeywords.length" class="muted">
-            Follow some keywords above to see your daily papers.
+          <p v-if="!dailyScopes.length" class="muted">
+            Follow some scopes above to see your daily papers.
           </p>
           <p v-else-if="!daily.length" class="muted">
-            No papers match your keywords right now. Check back tomorrow.
+            No papers under your scopes right now. Check back tomorrow.
           </p>
           <div v-else class="paper-list">
             <PaperCard

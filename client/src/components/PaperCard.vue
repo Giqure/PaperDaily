@@ -23,6 +23,13 @@ const saved = computed(() => props.paper.state === 'saved');
 
 <template>
   <article class="paper">
+    <div v-if="paper.tag || paper.scopes?.length" class="paper-meta">
+      <span v-if="paper.tag" class="tag">{{ paper.tag }}</span>
+      <span v-for="name in paper.scopes" :key="name" class="scope-pill">
+        {{ name }}
+      </span>
+    </div>
+
     <h3 class="paper-title">
       <a v-if="paper.url" :href="paper.url" target="_blank" rel="noopener noreferrer">
         {{ paper.title }}
@@ -30,8 +37,10 @@ const saved = computed(() => props.paper.state === 'saved');
       <span v-else>{{ paper.title }}</span>
     </h3>
 
+    <p v-if="paper.tldr" class="paper-tldr">{{ paper.tldr }}</p>
     <p v-if="authorList" class="paper-authors">{{ authorList }}</p>
-    <p v-if="paper.abstract" class="paper-abstract">{{ paper.abstract }}</p>
+    <p v-if="paper.zhSummary" class="paper-abstract">{{ paper.zhSummary }}</p>
+    <p v-else-if="paper.abstract" class="paper-abstract">{{ paper.abstract }}</p>
 
     <div class="paper-actions">
       <template v-if="context === 'daily'">

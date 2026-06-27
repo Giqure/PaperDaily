@@ -239,6 +239,164 @@ const migrations = [
       CREATE INDEX idx_scope_papers_paper ON scope_papers(paper_id);
     `);
   },
+
+  // 0008 — scopes become the subscribable unit.
+  //
+  // Previously a "subscription" pointed at a free-text keyword (matched against
+  // papers via FTS) while the curated `daily_scopes` were never served. This
+  // migration unifies the two: a `scopes` catalog holds the collection rule
+  // (name + arXiv queries + interests), users subscribe to a scope by id, and
+  // the daily feed is the curated membership of the scopes they follow.
+  //
+  // The catalog is seeded to mirror the generator's default config
+  // (Don_daily_paper_report/config.example.json) so subscribing to a scope name
+  // lines up with the `daily_scopes.name` rows already imported from the
+  // archive. The seed array is inlined to avoid a cross-repo file read at
+  // migration time — keep it in sync with that config if the defaults change.
+  (d) => {
+    d.exec(`
+      CREATE TABLE scopes (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name       TEXT NOT NULL UNIQUE,
+        queries    TEXT NOT NULL,          -- JSON array of arXiv query strings
+        interests  TEXT,
+        -- NULL = seeded/system scope; otherwise the user who authored it. On
+        -- user deletion the scope stays in the shared catalog, unattributed.
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_scopes_created_by ON scopes(created_by);
+    `);
+
+    const seed = [
+      {
+        name: '具身智能综合',
+        queries: [
+          'cat:cs.RO',
+          'all:embodied',
+          'all:vision AND all:language AND all:action',
+          'all:robot AND all:manipulation',
+        ],
+        interests: 'Embodied AI, generalist robot policy, robot learning',
+      },
+      {
+        name: 'VLA与机器人基础模型',
+        queries: [
+          'all:vision AND all:language AND all:action',
+          'all:robot AND all:foundation AND all:model',
+          'all:multimodal AND all:robot',
+        ],
+        interests: 'VLA, robot foundation model, multimodal policy',
+      },
+      {
+        name: '遥操作与示教',
+        queries: [
+          'all:teleoperation AND all:robot',
+          'all:remote AND all:operation AND all:robot',
+          'all:human AND all:demonstration AND all:robot',
+          'all:learning AND all:demonstration AND all:robot',
+        ],
+        interests:
+          'teleoperation, human demonstration, learning from demonstration, robot teaching',
+      },
+      {
+        name: '灵巧手与操作',
+        queries: [
+          'all:dexterous AND all:manipulation',
+          'all:dexterous AND all:hand',
+          'all:robot AND all:manipulation',
+          'all:grasping',
+        ],
+        interests: 'dexterous hand, manipulation, grasping',
+      },
+      {
+        name: '世界模型与规划',
+        queries: [
+          'all:world AND all:model AND all:robot',
+          'all:video AND all:prediction AND all:robot',
+          'all:model AND all:based AND all:robot AND all:learning',
+          'all:planning AND all:embodied',
+        ],
+        interests:
+          'world model, planning, model-based robot learning, video prediction',
+      },
+      {
+        name: '模仿学习与Sim2Real',
+        queries: [
+          'all:imitation AND all:learning AND all:robot',
+          'all:behavior AND all:cloning AND all:robot',
+          'all:sim AND all:real AND all:robot',
+          'all:domain AND all:randomization AND all:robot',
+        ],
+        interests:
+          'imitation learning, behavior cloning, sim-to-real, domain adaptation',
+      },
+      {
+        name: '机器人数据集与评测',
+        queries: [
+          'all:robot AND all:dataset',
+          'all:robotics AND all:benchmark',
+          'all:embodied AND all:benchmark',
+          'all:evaluation AND all:robot AND all:learning',
+        ],
+        interests: 'robot dataset, benchmark, evaluation, reproducibility',
+      },
+    ];
+    const insScope = d.prepare(
+      'INSERT INTO scopes (name, queries, interests) VALUES (@name, @queries, @interests)'
+    );
+    for (const sc of seed) {
+      insScope.run({
+        name: sc.name,
+        queries: JSON.stringify(sc.queries),
+        interests: sc.interests ?? null,
+      });
+    }
+
+    // Adopt any scope names already present in the imported archive that the
+    // seed didn't cover (e.g. an alternate config). Their collection rule comes
+    // from the most recent daily_scopes snapshot for that name.
+    d.exec(`
+      INSERT OR IGNORE INTO scopes (name, queries, interests)
+      SELECT name,
+             COALESCE(queries, '[]'),
+             interests
+      FROM daily_scopes ds
+      WHERE ds.id = (
+        SELECT MAX(id) FROM daily_scopes WHERE name = ds.name
+      );
+    `);
+
+    // Repoint subscriptions from free-text keyword -> scope_id. Rebuild the
+    // table because SQLite can't drop the NOT NULL keyword column while keeping
+    // its data, and we want a clean (user_id, scope_id) shape.
+    d.exec(`
+      CREATE TABLE subscriptions_new (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        scope_id   INTEGER NOT NULL REFERENCES scopes(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      -- Carry over only subscriptions whose keyword matches a known scope name;
+      -- legacy free-text keywords with no matching scope are dropped.
+      INSERT OR IGNORE INTO subscriptions_new (user_id, scope_id, created_at)
+      SELECT sub.user_id, sc.id, sub.created_at
+      FROM subscriptions sub
+      JOIN scopes sc ON sc.name = sub.keyword;
+
+      DROP TABLE subscriptions;
+      ALTER TABLE subscriptions_new RENAME TO subscriptions;
+
+      CREATE UNIQUE INDEX idx_subscriptions_user_scope
+        ON subscriptions(user_id, scope_id);
+      CREATE INDEX idx_subscriptions_user ON subscriptions(user_id);
+
+      -- The free-text keyword library is obsolete now that scopes are the
+      -- subscribable unit.
+      DROP TABLE IF EXISTS keywords_library;
+    `);
+  },
 ];
 
 import { randomUUID } from 'node:crypto';

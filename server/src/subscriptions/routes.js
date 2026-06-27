@@ -6,90 +6,148 @@ import {
   subscribe,
   unsubscribe,
   countSubscriptions,
-  countAuthoredKeywords,
-  isLibraryKeyword,
-  listLibrary,
+  countAuthoredScopes,
+  createScope,
+  listCatalog,
 } from './queries.js';
 
 const router = Router();
 
-const MAX_KEYWORD_LEN = 80;
-const MAX_SUBSCRIPTIONS = 50; // per user — keeps the digest query bounded
-const MAX_AUTHORED_KEYWORDS = 3; // per user — keywords introduced to the shared library
+const MAX_NAME_LEN = 80;
+const MAX_QUERY_LEN = 200;
+const MAX_QUERIES = 8; // per scope — keeps the morning collection bounded
+const MAX_INTERESTS_LEN = 600;
+const MAX_SUBSCRIPTIONS = 50; // per user
+const MAX_AUTHORED_SCOPES = 3; // per user — scopes introduced to the catalog
 
-// Normalize a keyword: trim, collapse internal whitespace, lowercase. Lowercase
-// because the digest match is case-insensitive and the unique index dedupes on
-// the stored form.
-function normalizeKeyword(raw) {
-  return String(raw ?? '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
+// Normalize a scope name: trim and collapse internal whitespace. Case is
+// preserved (names are display labels, e.g. "VLA与机器人基础模型") but the unique
+// index on scopes.name still dedupes exact matches.
+function normalizeName(raw) {
+  return String(raw ?? '').trim().replace(/\s+/g, ' ');
+}
+
+// Clean a list of arXiv query strings: trim, drop empties, dedupe, cap count.
+function normalizeQueries(raw) {
+  const list = Array.isArray(raw) ? raw : [raw];
+  const out = [];
+  for (const q of list) {
+    const v = String(q ?? '').trim();
+    if (v && !out.includes(v)) out.push(v);
+  }
+  return out;
 }
 
 // All subscription routes require a logged-in user.
 router.use(requireAuth);
 
-/** GET /api/subscriptions/library — the shared keyword library to pick from. */
-router.get('/library', (req, res) => {
-  res.json({ library: listLibrary() });
+/** GET /api/subscriptions/catalog — the shared scope catalog to pick from. */
+router.get('/catalog', (req, res) => {
+  res.json({ catalog: listCatalog() });
 });
 
-/** GET /api/subscriptions — the user's followed keywords + their contribution budget. */
+/** GET /api/subscriptions — the user's followed scopes + contribution budget. */
 router.get('/', (req, res) => {
   res.json({
     subscriptions: listSubscriptions(req.user.id),
     authored: {
-      used: countAuthoredKeywords(req.user.id),
-      max: MAX_AUTHORED_KEYWORDS,
+      used: countAuthoredScopes(req.user.id),
+      max: MAX_AUTHORED_SCOPES,
     },
   });
 });
 
 /**
- * POST /api/subscriptions — follow a keyword. Body: { keyword }.
- *
- * If the keyword isn't in the shared library, following it contributes it to
- * the library (attributed to this user) so others can subscribe too. Each user
- * may have at most MAX_AUTHORED_KEYWORDS such contributions live at once.
+ * POST /api/subscriptions — follow an existing catalog scope.
+ * Body: { scopeId }.
  */
 router.post('/', writeLimiter, (req, res) => {
-  const keyword = normalizeKeyword(req.body?.keyword);
-
-  if (!keyword) {
-    return res.status(400).json({ error: 'A keyword is required.' });
-  }
-  if (keyword.length > MAX_KEYWORD_LEN) {
-    return res
-      .status(400)
-      .json({ error: `Keyword must be at most ${MAX_KEYWORD_LEN} characters.` });
+  const scopeId = Number(req.body?.scopeId);
+  if (!Number.isInteger(scopeId) || scopeId < 1) {
+    return res.status(400).json({ error: 'A valid scopeId is required.' });
   }
   if (countSubscriptions(req.user.id) >= MAX_SUBSCRIPTIONS) {
     return res
       .status(409)
-      .json({ error: `You can follow at most ${MAX_SUBSCRIPTIONS} keywords.` });
+      .json({ error: `You can follow at most ${MAX_SUBSCRIPTIONS} scopes.` });
   }
 
-  // Contributing a brand-new keyword to the shared library is capped; following
-  // a keyword that already exists in the library is not.
-  const alreadyInLibrary = isLibraryKeyword(keyword);
-  if (!alreadyInLibrary && countAuthoredKeywords(req.user.id) >= MAX_AUTHORED_KEYWORDS) {
-    return res.status(409).json({
-      error: `You can introduce at most ${MAX_AUTHORED_KEYWORDS} new keywords to the library. Subscribe to existing ones, or remove a keyword you created first.`,
-    });
+  const result = subscribe(req.user.id, scopeId);
+  if (result.missing) {
+    return res.status(404).json({ error: 'That scope no longer exists.' });
   }
-
-  const result = subscribe(req.user.id, keyword);
   if (result.duplicate) {
-    return res.status(409).json({ error: 'You already follow that keyword.' });
+    return res.status(409).json({ error: 'You already follow that scope.' });
   }
   res.status(201).json({ subscription: result.subscription });
 });
 
 /**
- * DELETE /api/subscriptions/:id — unfollow a keyword the user owns. If the user
- * was the last subscriber to a keyword they contributed, it's removed from the
- * shared library, freeing their contribution slot.
+ * POST /api/subscriptions/scopes — author a new scope and follow it. The new
+ * scope joins the shared catalog (attributed to this user) so others can
+ * subscribe too. Each user may have at most MAX_AUTHORED_SCOPES live.
+ * Body: { name, queries: string[], interests }.
+ */
+router.post('/scopes', writeLimiter, (req, res) => {
+  const name = normalizeName(req.body?.name);
+  const queries = normalizeQueries(req.body?.queries);
+  const interests = String(req.body?.interests ?? '').trim();
+
+  if (!name) {
+    return res.status(400).json({ error: 'A scope name is required.' });
+  }
+  if (name.length > MAX_NAME_LEN) {
+    return res
+      .status(400)
+      .json({ error: `Name must be at most ${MAX_NAME_LEN} characters.` });
+  }
+  if (!queries.length) {
+    return res
+      .status(400)
+      .json({ error: 'At least one arXiv query is required.' });
+  }
+  if (queries.length > MAX_QUERIES) {
+    return res
+      .status(400)
+      .json({ error: `A scope may have at most ${MAX_QUERIES} queries.` });
+  }
+  if (queries.some((q) => q.length > MAX_QUERY_LEN)) {
+    return res
+      .status(400)
+      .json({ error: `Each query must be at most ${MAX_QUERY_LEN} characters.` });
+  }
+  if (interests.length > MAX_INTERESTS_LEN) {
+    return res.status(400).json({
+      error: `Interests must be at most ${MAX_INTERESTS_LEN} characters.`,
+    });
+  }
+  if (countSubscriptions(req.user.id) >= MAX_SUBSCRIPTIONS) {
+    return res
+      .status(409)
+      .json({ error: `You can follow at most ${MAX_SUBSCRIPTIONS} scopes.` });
+  }
+  if (countAuthoredScopes(req.user.id) >= MAX_AUTHORED_SCOPES) {
+    return res.status(409).json({
+      error: `You can introduce at most ${MAX_AUTHORED_SCOPES} scopes to the catalog. Remove one you created first.`,
+    });
+  }
+
+  const created = createScope(req.user.id, { name, queries, interests });
+  if (created.duplicateName) {
+    return res
+      .status(409)
+      .json({ error: 'A scope with that name already exists. Subscribe to it instead.' });
+  }
+
+  // Auto-follow the scope the user just authored.
+  const sub = subscribe(req.user.id, created.scope.id);
+  res.status(201).json({ subscription: sub.subscription, scope: created.scope });
+});
+
+/**
+ * DELETE /api/subscriptions/:id — unfollow a scope the user owns. If the user
+ * was the last subscriber to a scope they authored, it's removed from the
+ * catalog, freeing their contribution slot.
  */
 router.delete('/:id', writeLimiter, (req, res) => {
   const id = Number(req.params.id);

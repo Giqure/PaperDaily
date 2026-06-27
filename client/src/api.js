@@ -37,8 +37,10 @@ export const authApi = {
 
 export const subscriptionsApi = {
   list: () => request('/subscriptions'),
-  library: () => request('/subscriptions/library'),
-  add: (keyword) => request('/subscriptions', { method: 'POST', body: { keyword } }),
+  catalog: () => request('/subscriptions/catalog'),
+  add: (scopeId) => request('/subscriptions', { method: 'POST', body: { scopeId } }),
+  createScope: (payload) =>
+    request('/subscriptions/scopes', { method: 'POST', body: payload }),
   remove: (id) => request(`/subscriptions/${id}`, { method: 'DELETE' }),
 };
 
