@@ -381,6 +381,17 @@ button.ghost:hover:not(:disabled) {
   opacity: 0.7;
 }
 
+/* Plain list (All papers tab): a clean scope list, not a nav. No active rail,
+   no click-to-scroll affordances. */
+.scope-nav.plain .scope-nav-link {
+  cursor: default;
+}
+
+.scope-nav.plain .scope-nav-link:hover:not(:disabled) {
+  background: transparent;
+  color: var(--ink-soft);
+}
+
 .edit-meta {
   margin-top: 1rem;
 }
@@ -569,6 +580,14 @@ button.ghost:hover:not(:disabled) {
   background: var(--maroon-soft);
   border: 1px solid #e0c4c7;
   color: var(--maroon);
+}
+
+/* Scope name badges (All papers tab): muted, to read as context not a label. */
+.scope-tag {
+  font-weight: 600;
+  background: var(--surface-2);
+  border-color: var(--rule);
+  color: var(--ink-soft);
 }
 
 /* AI / Original summary toggle */

@@ -10,11 +10,13 @@ import PushSettings from '../components/PushSettings.vue';
 const router = useRouter();
 const loggingOut = ref(false);
 
-const tab = ref('daily'); // 'daily' | 'saved'
+const tab = ref('daily'); // 'daily' | 'all' | 'saved'
 const daily = ref([]);
+const all = ref([]);
 const saved = ref([]);
 const dailyScopes = ref([]);
 const loadingDaily = ref(false);
+const loadingAll = ref(false);
 const loadingSaved = ref(false);
 const error = ref('');
 
@@ -46,6 +48,35 @@ const scopesWithPapers = computed(
   () => new Set(dailyGroups.value.filter((g) => g.papers.length).map((g) => g.name))
 );
 
+// Group the full archive by digest date, newest first. The server already
+// orders by date DESC then rank, so a single pass preserves both orderings.
+const allGroups = computed(() => {
+  const groups = [];
+  let current = null;
+  for (const p of all.value) {
+    const date = p.digestDate || 'Undated';
+    if (!current || current.date !== date) {
+      current = { date, papers: [] };
+      groups.push(current);
+    }
+    current.papers.push(p);
+  }
+  return groups;
+});
+
+// Render a digest date as a friendly label, falling back to the raw string.
+function formatDate(date) {
+  if (!date || date === 'Undated') return 'Undated';
+  const d = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return date;
+  return d.toLocaleDateString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 async function loadDaily() {
   loadingDaily.value = true;
   error.value = '';
@@ -70,6 +101,19 @@ async function loadSaved() {
     error.value = err.message;
   } finally {
     loadingSaved.value = false;
+  }
+}
+
+async function loadAll() {
+  loadingAll.value = true;
+  error.value = '';
+  try {
+    const res = await papersApi.all();
+    all.value = res.papers;
+  } catch (err) {
+    error.value = err.message;
+  } finally {
+    loadingAll.value = false;
   }
 }
 
@@ -110,6 +154,7 @@ async function unsave(paper) {
 
 function switchTab(next) {
   tab.value = next;
+  if (next === 'all' && !all.value.length) loadAll();
   if (next === 'saved' && !saved.value.length) loadSaved();
 }
 
@@ -188,6 +233,9 @@ onBeforeUnmount(() => observer?.disconnect());
           <button :class="{ active: tab === 'daily' }" @click="switchTab('daily')">
             Daily papers
           </button>
+          <button :class="{ active: tab === 'all' }" @click="switchTab('all')">
+            All papers
+          </button>
           <button :class="{ active: tab === 'saved' }" @click="switchTab('saved')">
             Saved
           </button>
@@ -229,6 +277,39 @@ onBeforeUnmount(() => observer?.disconnect());
           </template>
         </div>
 
+        <!-- All papers (full archive, grouped by digest date) -->
+        <div v-show="tab === 'all'">
+          <div v-if="loadingAll" class="muted">Loading papers…</div>
+          <template v-else>
+            <p v-if="!dailyScopes.length" class="muted">
+              Follow some scopes in the sidebar to see your papers.
+            </p>
+            <p v-else-if="!all.length" class="muted">
+              No papers under your scopes yet.
+            </p>
+            <template v-else>
+              <section
+                v-for="group in allGroups"
+                :key="group.date"
+                class="scope-section"
+              >
+                <h2 class="scope-section-head">{{ formatDate(group.date) }}</h2>
+                <div class="paper-list">
+                  <PaperCard
+                    v-for="p in group.papers"
+                    :key="`${group.date}:${p.id}`"
+                    :paper="p"
+                    context="daily"
+                    :show-scopes="true"
+                    @save="save(p)"
+                    @dismiss="dismiss(p)"
+                  />
+                </div>
+              </section>
+            </template>
+          </template>
+        </div>
+
         <!-- Saved -->
         <div v-show="tab === 'saved'">
           <div v-if="loadingSaved" class="muted">Loading…</div>
@@ -252,6 +333,7 @@ onBeforeUnmount(() => observer?.disconnect());
         <KeywordManager
           :active-scope="activeScope"
           :scopes-with-papers="scopesWithPapers"
+          :nav-enabled="tab === 'daily'"
           @changed="loadDaily"
           @navigate="scrollToScope"
         />

@@ -5,6 +5,9 @@ const props = defineProps({
   paper: { type: Object, required: true },
   // 'daily' shows the up/down vote icons; 'saved' shows Remove.
   context: { type: String, default: 'daily' },
+  // Show the paper's scope name(s) as badges. Used in the "All papers" tab,
+  // where cards are grouped by date rather than by scope.
+  showScopes: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['save', 'dismiss', 'unsave']);
@@ -85,8 +88,18 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
 
 <template>
   <article class="paper" :class="{ dismissed }">
-    <div v-if="paper.tag || hasBothSummaries" class="paper-meta">
+    <div
+      v-if="paper.tag || hasBothSummaries || (showScopes && paper.scopes.length)"
+      class="paper-meta"
+    >
       <span v-if="paper.tag" class="tag">{{ paper.tag }}</span>
+      <span
+        v-for="name in (showScopes ? paper.scopes : [])"
+        :key="name"
+        class="tag scope-tag"
+      >
+        {{ name }}
+      </span>
       <button
         v-if="hasBothSummaries"
         class="ai-toggle"

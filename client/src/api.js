@@ -46,6 +46,7 @@ export const subscriptionsApi = {
 
 export const papersApi = {
   daily: () => request('/papers/daily'),
+  all: () => request('/papers/all'),
   saved: () => request('/papers/saved'),
   setState: (id, state) =>
     request(`/papers/${id}/state`, { method: 'PUT', body: { state } }),

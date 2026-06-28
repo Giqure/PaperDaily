@@ -7,6 +7,9 @@ const props = defineProps({
   activeScope: { type: String, default: '' },
   // Set of scope names that have papers today — others are dimmed.
   scopesWithPapers: { type: Object, default: () => new Set() },
+  // Whether the scope list acts as scrollspy nav (daily tab). When false the
+  // list is plain: no active rail, no dimming, no click-to-scroll.
+  navEnabled: { type: Boolean, default: true },
 });
 
 const emit = defineEmits(['changed', 'navigate']);
@@ -40,6 +43,12 @@ const atAuthorCap = computed(() => authored.value.used >= authored.value.max);
 
 function hasPapers(name) {
   return props.scopesWithPapers.has(name);
+}
+
+// In nav mode, scopes with no papers today are inert/dimmed. Outside nav mode
+// (e.g. the All papers tab) every scope reads as a plain, active entry.
+function navItemDisabled(name) {
+  return props.navEnabled && !hasPapers(name);
 }
 
 async function load() {
@@ -132,22 +141,22 @@ defineExpose({ reload: load });
     <template v-else>
       <p v-if="error" class="error">{{ error }}</p>
 
-      <!-- Followed scopes = scrollspy nav -->
-      <nav v-if="subscriptions.length" class="scope-nav">
+      <!-- Followed scopes = scrollspy nav (daily tab) / plain list elsewhere -->
+      <nav v-if="subscriptions.length" class="scope-nav" :class="{ plain: !navEnabled }">
         <div
           v-for="sub in subscriptions"
           :key="sub.id"
           class="scope-nav-item"
           :class="{
-            active: sub.scope.name === activeScope,
-            empty: !hasPapers(sub.scope.name),
+            active: navEnabled && sub.scope.name === activeScope,
+            empty: navEnabled && !hasPapers(sub.scope.name),
           }"
         >
           <button
             class="scope-nav-link"
-            :disabled="!hasPapers(sub.scope.name)"
+            :disabled="navItemDisabled(sub.scope.name)"
             :title="sub.scope.interests"
-            @click="emit('navigate', sub.scope.name)"
+            @click="navEnabled && emit('navigate', sub.scope.name)"
           >
             <span class="scope-nav-name">{{ sub.scope.name }}</span>
           </button>

@@ -4,6 +4,7 @@ import { writeLimiter } from '../auth/rate-limit.js';
 import { listSubscriptions } from '../subscriptions/queries.js';
 import {
   dailyForUser,
+  allForUser,
   listSaved,
   paperExists,
   setPaperState,
@@ -15,6 +16,8 @@ const router = Router();
 const VALID_STATES = new Set(['saved', 'dismissed']);
 const DEFAULT_DAILY_LIMIT = 50;
 const MAX_DAILY_LIMIT = 100;
+const DEFAULT_ALL_LIMIT = 500;
+const MAX_ALL_LIMIT = 1000;
 
 router.use(requireAuth);
 
@@ -33,6 +36,18 @@ router.get('/daily', (req, res) => {
 /** GET /api/papers/saved — papers the user has saved. */
 router.get('/saved', (req, res) => {
   res.json({ papers: listSaved(req.user.id) });
+});
+
+/**
+ * GET /api/papers/all — the full archive: curated papers under the user's
+ * followed scopes across every digest date, newest first. Each item carries the
+ * digestDate it belongs to so the client can group by date.
+ */
+router.get('/all', (req, res) => {
+  const limit = clampLimit(req.query.limit, DEFAULT_ALL_LIMIT, MAX_ALL_LIMIT);
+  const papers = allForUser(req.user.id, limit);
+  const scopes = listSubscriptions(req.user.id).map((sub) => sub.scope.name);
+  res.json({ papers, scopes });
 });
 
 /**

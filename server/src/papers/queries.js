@@ -55,6 +55,47 @@ function s() {
         LIMIT @limit
       `),
 
+      // Full archive: curated papers under the user's followed scopes across
+      // every digest date (not just the latest), so older digests stay
+      // browsable. The same paper can appear once per date it was digested, so
+      // we group by (paper, date) rather than paper alone. Enrichment is taken
+      // from the best-ranked scope_papers row for that paper on that date.
+      // Dismissed papers are excluded.
+      allByScope: db.prepare(`
+        SELECT p.id, p.external_id, p.title, p.abstract, p.authors, p.url,
+               p.pdf_url, p.published_at, p.created_at,
+               up.state AS state,
+               ds.digest_date AS digest_date,
+               MIN(spr.rank) AS rank,
+               (SELECT sp2.tag FROM scope_papers sp2
+                  JOIN daily_scopes d2 ON d2.id = sp2.daily_scope_id
+                 WHERE sp2.paper_id = p.id AND d2.digest_date = ds.digest_date
+                 ORDER BY sp2.rank LIMIT 1) AS tag,
+               (SELECT sp2.tldr FROM scope_papers sp2
+                  JOIN daily_scopes d2 ON d2.id = sp2.daily_scope_id
+                 WHERE sp2.paper_id = p.id AND d2.digest_date = ds.digest_date
+                 ORDER BY sp2.rank LIMIT 1) AS tldr,
+               (SELECT sp2.zh_summary FROM scope_papers sp2
+                  JOIN daily_scopes d2 ON d2.id = sp2.daily_scope_id
+                 WHERE sp2.paper_id = p.id AND d2.digest_date = ds.digest_date
+                 ORDER BY sp2.rank LIMIT 1) AS zh_summary,
+               (SELECT sp2.code FROM scope_papers sp2
+                  JOIN daily_scopes d2 ON d2.id = sp2.daily_scope_id
+                 WHERE sp2.paper_id = p.id AND d2.digest_date = ds.digest_date
+                 ORDER BY sp2.rank LIMIT 1) AS code,
+               GROUP_CONCAT(DISTINCT ds.name) AS scope_names
+        FROM scope_papers spr
+        JOIN daily_scopes ds ON ds.id = spr.daily_scope_id
+        JOIN subscriptions sub ON sub.scope_id = ds.scope_id AND sub.user_id = @user_id
+        JOIN papers p ON p.id = spr.paper_id
+        LEFT JOIN user_papers up ON up.paper_id = p.id AND up.user_id = @user_id
+        WHERE (up.state IS NULL OR up.state <> 'dismissed')
+        GROUP BY p.id, ds.digest_date
+        ORDER BY ds.digest_date DESC, rank ASC,
+                 COALESCE(p.published_at, p.created_at) DESC, p.id DESC
+        LIMIT @limit
+      `),
+
       // Saved list: every paper the user explicitly saved, newest save first.
       saved: db.prepare(`
         SELECT p.id, p.external_id, p.title, p.abstract, p.authors, p.url,
@@ -101,6 +142,8 @@ function toPublic(row) {
     zhSummary: row.zh_summary ?? null,
     code: row.code ?? null,
     scopes: row.scope_names ? row.scope_names.split(',') : [],
+    // The digest date this row belongs to (present only on the archive feed).
+    digestDate: row.digest_date ?? null,
   };
 }
 
@@ -124,6 +167,15 @@ export function dailyForUser(userId, limit = 50) {
 
 export function listSaved(userId, limit = 100) {
   return s().saved.all({ user_id: userId, limit }).map(toPublic);
+}
+
+/**
+ * Full archive for a user: curated papers under the scopes they follow across
+ * every digest date, newest date first. Lets users browse past digests, not
+ * just the latest one. Empty if the user follows no scopes.
+ */
+export function allForUser(userId, limit = 500) {
+  return s().allByScope.all({ user_id: userId, limit }).map(toPublic);
 }
 
 export function setPaperState(userId, paperId, state) {
