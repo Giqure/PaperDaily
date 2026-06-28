@@ -409,6 +409,24 @@ const migrations = [
       ALTER TABLE users ADD COLUMN bark_key           TEXT;
     `);
   },
+
+  // 0010 — email-push confirmation tokens. Turning email push ON now requires
+  // the user to click a one-time link mailed to their account address (proving
+  // the address actually receives mail before we start sending digests). Each
+  // token is single-use and time-limited; turning push OFF needs no token.
+  (d) => {
+    d.exec(`
+      CREATE TABLE email_push_tokens (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        token      TEXT NOT NULL UNIQUE,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at TEXT NOT NULL,
+        used_at    TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_email_push_tokens_user ON email_push_tokens(user_id);
+    `);
+  },
 ];
 
 import { randomUUID } from 'node:crypto';

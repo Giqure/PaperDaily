@@ -56,8 +56,11 @@ function s() {
       scopeByName: db.prepare(
         'SELECT id, name, queries, interests, created_by FROM scopes WHERE name = ?'
       ),
+      // The catalog a user may pick from: seeded scopes (no author) plus the
+      // scopes they authored themselves. Another user's authored scope is
+      // private and never listed here.
       listCatalog: db.prepare(
-        'SELECT id, name, queries, interests, created_by FROM scopes ORDER BY name'
+        'SELECT id, name, queries, interests, created_by FROM scopes WHERE created_by IS NULL OR created_by = ? ORDER BY name'
       ),
       // Catalog scopes that have at least one subscriber — the set the reporter
       // actually collects, so arXiv load tracks real demand and user-authored
@@ -136,9 +139,13 @@ export function countAuthoredScopes(userId) {
   return s().countAuthored.get(userId).n;
 }
 
-/** The shared scope catalog. `createdBy` is null for seeded scopes. */
-export function listCatalog() {
-  return s().listCatalog.all().map(scopeToPublic);
+/**
+ * The scope catalog visible to a user: shared seeded scopes plus the scopes
+ * they authored. Other users' authored scopes are private and excluded.
+ * `createdBy` is null for seeded scopes.
+ */
+export function listCatalog(userId) {
+  return s().listCatalog.all(userId).map(scopeToPublic);
 }
 
 /**
@@ -187,11 +194,17 @@ export function createScope(userId, { name, queries, interests }) {
  *
  * Returns:
  *   { subscription }     on success
- *   { missing: true }    if the scope id doesn't exist
+ *   { missing: true }    if the scope id doesn't exist, or is another user's
+ *                        private (authored) scope — which is invisible to them
  *   { duplicate: true }  if the user already follows this scope
  */
 export const subscribe = db.transaction((userId, scopeId) => {
-  if (!s().scopeById.get(scopeId)) return { missing: true };
+  const scope = s().scopeById.get(scopeId);
+  // A scope is visible only when seeded (no author) or authored by this user.
+  // Treat another user's private scope as missing so its existence never leaks.
+  if (!scope || (scope.created_by != null && scope.created_by !== userId)) {
+    return { missing: true };
+  }
   try {
     const info = s().insertSub.run({ user_id: userId, scope_id: scopeId });
     return { subscription: subToPublic(s().subById.get(info.lastInsertRowid)) };

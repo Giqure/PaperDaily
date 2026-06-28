@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { settingsApi } from '../api.js';
 
 // Local editable copy of the user's push settings, loaded from the server.
@@ -9,8 +10,16 @@ const saving = ref(false);
 const error = ref('');
 const saved = ref(false);
 
+// Email push has its own confirm-by-link flow, so it gets its own busy flag and
+// notice line separate from the Bark form's save state.
+const emailBusy = ref(false);
+const emailNotice = ref('');
+
 // Collapsed by default — the rail stays clean until the user opens it.
 const open = ref(false);
+
+const route = useRoute();
+const router = useRouter();
 
 async function load() {
   loading.value = true;
@@ -24,6 +33,7 @@ async function load() {
   }
 }
 
+// Bark settings only — email push is changed through its own buttons below.
 async function save() {
   error.value = '';
   saved.value = false;
@@ -37,7 +47,6 @@ async function save() {
   saving.value = true;
   try {
     const res = await settingsApi.updatePush({
-      emailPushEnabled: settings.value.emailPushEnabled,
       barkPushEnabled: settings.value.barkPushEnabled,
       barkKey,
     });
@@ -50,7 +59,61 @@ async function save() {
   }
 }
 
-onMounted(load);
+// "Turn on": ask the server to mail a confirmation link. Email push only flips
+// on once the user clicks that link (handled by the confirm redirect below).
+async function turnOnEmail() {
+  error.value = '';
+  emailNotice.value = '';
+  emailBusy.value = true;
+  try {
+    const res = await settingsApi.requestEmailPush();
+    if (res.status === 'already-on') {
+      await load();
+    } else {
+      emailNotice.value =
+        `Confirmation link sent to ${settings.value.email}. Open it to finish turning on email push.`;
+    }
+  } catch (err) {
+    error.value = err.message;
+  } finally {
+    emailBusy.value = false;
+  }
+}
+
+// "Turn off" is a double-click button — no extra confirm step (stopping mail is
+// low-risk, so the double-click alone guards against an accidental single tap).
+async function turnOffEmail() {
+  error.value = '';
+  emailNotice.value = '';
+  emailBusy.value = true;
+  try {
+    const res = await settingsApi.disableEmailPush();
+    settings.value = { ...settings.value, ...res.settings };
+  } catch (err) {
+    error.value = err.message;
+  } finally {
+    emailBusy.value = false;
+  }
+}
+
+onMounted(async () => {
+  await load();
+
+  // The mailed confirmation link redirects back here with ?emailPush=… —
+  // surface the outcome and drop the param so a refresh doesn't repeat it.
+  const outcome = route.query.emailPush;
+  if (outcome) {
+    open.value = true;
+    if (outcome === 'confirmed') {
+      emailNotice.value = 'Email push is on.';
+    } else if (outcome === 'invalid') {
+      error.value = 'That confirmation link is invalid or has expired. Try turning email push on again.';
+    }
+    const query = { ...route.query };
+    delete query.emailPush;
+    router.replace({ query });
+  }
+});
 </script>
 
 <template>
@@ -72,15 +135,39 @@ onMounted(load);
       <p v-if="error" class="error">{{ error }}</p>
       <p v-if="saved" class="ok">Saved.</p>
 
-      <form class="push-form" @submit.prevent="save">
-        <label class="toggle-row">
-          <input v-model="settings.emailPushEnabled" type="checkbox" :disabled="saving" />
+      <!-- Email push: confirm-by-link to turn on, double-click to turn off. -->
+      <div class="email-push">
+        <div class="email-head">
           <span>
             Email
             <small class="muted">to {{ settings.email }}</small>
           </span>
-        </label>
+          <button
+            v-if="!settings.emailPushEnabled"
+            type="button"
+            class="ghost sm"
+            :disabled="emailBusy"
+            @click="turnOnEmail"
+          >
+            {{ emailBusy ? 'Working…' : 'Turn on' }}
+          </button>
+          <button
+            v-else
+            type="button"
+            class="ghost sm danger"
+            title="Double-click to turn off"
+            :disabled="emailBusy"
+            @dblclick="turnOffEmail"
+          >
+            {{ emailBusy ? 'Working…' : 'Turn off (double-click)' }}
+          </button>
+        </div>
+        <p v-if="settings.emailPushEnabled" class="muted email-state">On.</p>
+        <p v-if="emailNotice" class="ok email-state">{{ emailNotice }}</p>
+      </div>
 
+      <!-- Bark push: a device key the user saves directly. -->
+      <form class="push-form" @submit.prevent="save">
         <label class="toggle-row">
           <input v-model="settings.barkPushEnabled" type="checkbox" :disabled="saving" />
           <span>Bark (iOS push)</span>
@@ -122,6 +209,26 @@ onMounted(load);
 <style scoped>
 .push-intro {
   margin-top: 0;
+}
+.email-push {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border, #e2e2e2);
+}
+.email-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.email-state {
+  margin: 0;
+}
+.ghost.sm.danger {
+  color: var(--danger, #c62828);
 }
 .push-form {
   display: flex;

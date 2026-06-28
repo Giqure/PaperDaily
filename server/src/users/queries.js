@@ -15,13 +15,18 @@ function s() {
       byUid: db.prepare('SELECT * FROM users WHERE uid = ?'),
       byId: db.prepare('SELECT * FROM users WHERE id = ?'),
 
-      updatePushSettings: db.prepare(`
+      // Bark is set directly from the settings form. Email is gated behind a
+      // mailed confirmation link, so it has its own single-column setter below.
+      updateBarkSettings: db.prepare(`
         UPDATE users SET
-          email_push_enabled = @email_push_enabled,
-          bark_push_enabled  = @bark_push_enabled,
-          bark_key           = @bark_key
+          bark_push_enabled = @bark_push_enabled,
+          bark_key          = @bark_key
         WHERE id = @id
       `),
+
+      setEmailPushEnabled: db.prepare(
+        'UPDATE users SET email_push_enabled = @enabled WHERE id = @id'
+      ),
 
       // Users who have at least one push channel enabled — the set the reporter
       // fans out to after generating a digest.
@@ -83,14 +88,19 @@ export function toPushSettings(row) {
   };
 }
 
-/** Persist a user's push settings. Returns the refreshed row. */
-export function updatePushSettings(userId, { emailPushEnabled, barkPushEnabled, barkKey }) {
-  s().updatePushSettings.run({
+/** Persist a user's Bark push settings. Returns the refreshed row. */
+export function updateBarkSettings(userId, { barkPushEnabled, barkKey }) {
+  s().updateBarkSettings.run({
     id: userId,
-    email_push_enabled: emailPushEnabled ? 1 : 0,
     bark_push_enabled: barkPushEnabled ? 1 : 0,
     bark_key: barkKey || null,
   });
+  return s().byId.get(userId);
+}
+
+/** Flip a user's email-push flag on or off. Returns the refreshed row. */
+export function setEmailPushEnabled(userId, enabled) {
+  s().setEmailPushEnabled.run({ id: userId, enabled: enabled ? 1 : 0 });
   return s().byId.get(userId);
 }
 

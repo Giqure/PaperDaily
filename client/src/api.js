@@ -53,5 +53,11 @@ export const papersApi = {
 
 export const settingsApi = {
   getPush: () => request('/settings/push'),
+  // Bark settings only — email push is gated behind a mailed confirmation link.
   updatePush: (payload) => request('/settings/push', { method: 'PUT', body: payload }),
+  // Email push: request a confirmation link, or turn it off immediately.
+  requestEmailPush: () =>
+    request('/settings/push/email/request', { method: 'POST' }),
+  disableEmailPush: () =>
+    request('/settings/push/email/disable', { method: 'POST' }),
 };

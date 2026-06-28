@@ -41,9 +41,9 @@ function normalizeQueries(raw) {
 // All subscription routes require a logged-in user.
 router.use(requireAuth);
 
-/** GET /api/subscriptions/catalog — the shared scope catalog to pick from. */
+/** GET /api/subscriptions/catalog — the scopes this user may pick from. */
 router.get('/catalog', (req, res) => {
-  res.json({ catalog: listCatalog() });
+  res.json({ catalog: listCatalog(req.user.id) });
 });
 
 /** GET /api/subscriptions — the user's followed scopes + contribution budget. */
@@ -83,9 +83,9 @@ router.post('/', writeLimiter, (req, res) => {
 });
 
 /**
- * POST /api/subscriptions/scopes — author a new scope and follow it. The new
- * scope joins the shared catalog (attributed to this user) so others can
- * subscribe too. Each user may have at most MAX_AUTHORED_SCOPES live.
+ * POST /api/subscriptions/scopes — author a new scope and follow it. The scope
+ * is private to its author: only they can see it in their catalog or subscribe
+ * to it. Each user may have at most MAX_AUTHORED_SCOPES live.
  * Body: { name, queries: string[], interests }.
  */
 router.post('/scopes', writeLimiter, (req, res) => {
