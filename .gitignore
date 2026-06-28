@@ -9,3 +9,4 @@ npm-debug.log*
 *.db
 server/data/
 HISTORY.md
+paperdaily.service

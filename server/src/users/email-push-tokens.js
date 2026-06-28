@@ -62,6 +62,16 @@ export function createEmailPushToken(userId) {
 }
 
 /**
+ * Retire all of a user's still-pending confirmation tokens (mark them used so
+ * they can no longer be consumed). Called when push is turned off, so a link
+ * that was mailed but never clicked can't later flip push back on. Returns the
+ * number of tokens retired.
+ */
+export function invalidateEmailPushTokens(userId) {
+  return s().consumeAllForUser.run(userId).changes;
+}
+
+/**
  * Validate and consume a confirmation token. Returns the owning user id on
  * success, or null if the token is unknown, already used, or expired. A valid
  * token is marked used so it can't be replayed.

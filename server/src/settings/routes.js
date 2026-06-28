@@ -9,6 +9,7 @@ import {
 import {
   createEmailPushToken,
   consumeEmailPushToken,
+  invalidateEmailPushTokens,
 } from '../users/email-push-tokens.js';
 import { sendMail, emailConfigured } from '../mail/mailer.js';
 
@@ -125,6 +126,9 @@ router.post('/push/email/request', emailConfirmLimiter, writeLimiter, async (req
  * No confirmation needed to stop receiving mail. Idempotent.
  */
 router.post('/push/email/disable', writeLimiter, (req, res) => {
+  // Retire any pending confirmation link so it can't flip push back on after
+  // the user has explicitly turned it off.
+  invalidateEmailPushTokens(req.user.id);
   const updated = setEmailPushEnabled(req.user.id, false);
   res.json({ settings: toPushSettings(updated) });
 });
