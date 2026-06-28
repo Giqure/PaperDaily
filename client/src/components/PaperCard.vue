@@ -24,6 +24,16 @@ const authorList = computed(() => {
 const saved = computed(() => props.paper.state === 'saved');
 const dismissed = computed(() => props.paper.state === 'dismissed');
 
+// Code repository badge. `paper.code` is either a repo URL, the sentinel "暂无"
+// (looked up, none found), or null (no enrichment, e.g. the saved feed). Show
+// the badge whenever enrichment ran; make it a bright, clickable link only when
+// an actual URL is present.
+const codeUrl = computed(() => {
+  const c = props.paper.code;
+  return typeof c === 'string' && /^https?:\/\//.test(c.trim()) ? c.trim() : null;
+});
+const showCode = computed(() => !!props.paper.code);
+
 // Remove is a two-step confirm: the first click arms it, the second commits.
 // It disarms on blur or after a short timeout so a stray click can't linger.
 const confirmingRemove = ref(false);
@@ -89,7 +99,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
 <template>
   <article class="paper" :class="{ dismissed }">
     <div
-      v-if="paper.tag || hasBothSummaries || (showScopes && paper.scopes.length)"
+      v-if="paper.tag || hasBothSummaries || showCode || (showScopes && paper.scopes.length)"
       class="paper-meta"
     >
       <span v-if="paper.tag" class="tag">{{ paper.tag }}</span>
@@ -108,6 +118,23 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
       >
         {{ showAi ? 'AI' : 'Original' }}
       </button>
+      <a
+        v-if="showCode && codeUrl"
+        class="code-badge"
+        :class="{ 'ml-auto': !hasBothSummaries }"
+        :href="codeUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Open source code"
+      >
+        Code
+      </a>
+      <span
+        v-else-if="showCode"
+        class="code-badge off"
+        :class="{ 'ml-auto': !hasBothSummaries }"
+        title="No code available"
+      ></span>
     </div>
 
     <h3 class="paper-title">

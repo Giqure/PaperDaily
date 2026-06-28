@@ -614,6 +614,49 @@ button.ghost:hover:not(:disabled) {
   border-color: var(--navy);
 }
 
+/* Code repository badge. Bright/filled when a repo URL exists (clickable link
+   that jumps to the repo); muted and inert when no code was found. */
+.code-badge {
+  padding: 0.12rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 3px;
+  text-decoration: none;
+  background: var(--maroon);
+  border: 1px solid var(--maroon);
+  color: #fff;
+}
+
+.code-badge:hover {
+  filter: brightness(1.08);
+}
+
+.code-badge.off {
+  display: inline-flex;
+  justify-content: center;
+  /* Reserve the wider "Code" width so swapping to "N/A" on hover can't shrink it. */
+  min-width: 4.4em;
+  background: transparent;
+  border-color: var(--rule);
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+/* Muted badge shows "Code" at rest, "N/A" on hover (no real link to follow). */
+.code-badge.off::after {
+  content: 'Code';
+}
+
+.code-badge.off:hover::after {
+  content: 'N/A';
+}
+
+/* Pushes the badge to the right edge when no AI toggle precedes it. */
+.code-badge.ml-auto {
+  margin-left: auto;
+}
+
 .paper-tldr {
   margin: 0.3rem 0 0.5rem;
   font-family: var(--serif);
