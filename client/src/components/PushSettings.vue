@@ -133,45 +133,51 @@ onMounted(async () => {
       </p>
 
       <p v-if="error" class="error">{{ error }}</p>
-      <p v-if="saved" class="ok">Saved.</p>
 
       <!-- Email push: confirm-by-link to turn on, double-click to turn off. -->
-      <div class="email-push">
-        <div class="email-head">
-          <span>
+      <div class="channel">
+        <div class="channel-head">
+          <span class="channel-label">
             Email
             <small class="muted">to {{ settings.email }}</small>
           </span>
-          <button
-            v-if="!settings.emailPushEnabled"
-            type="button"
-            class="ghost sm"
-            :disabled="emailBusy"
-            @click="turnOnEmail"
-          >
-            {{ emailBusy ? 'Working…' : 'Turn on' }}
-          </button>
-          <button
-            v-else
-            type="button"
-            class="ghost sm danger"
-            title="Double-click to turn off"
-            :disabled="emailBusy"
-            @dblclick="turnOffEmail"
-          >
-            {{ emailBusy ? 'Working…' : 'Turn off (double-click)' }}
-          </button>
         </div>
-        <p v-if="settings.emailPushEnabled" class="muted email-state">On.</p>
-        <p v-if="emailNotice" class="ok email-state">{{ emailNotice }}</p>
+        <button
+          v-if="!settings.emailPushEnabled"
+          type="button"
+          class="ghost sm"
+          :disabled="emailBusy"
+          @click="turnOnEmail"
+        >
+          {{ emailBusy ? 'Working…' : 'Turn on' }}
+        </button>
+        <button
+          v-else
+          type="button"
+          class="ghost sm danger"
+          title="Double-click to turn off"
+          :disabled="emailBusy"
+          @dblclick="turnOffEmail"
+        >
+          {{ emailBusy ? 'Working…' : 'Turn off (double-click)' }}
+        </button>
+        <p v-if="settings.emailPushEnabled" class="muted channel-state">On.</p>
+        <p v-if="emailNotice" class="ok channel-state">{{ emailNotice }}</p>
       </div>
 
-      <!-- Bark push: a device key the user saves directly. -->
-      <form class="push-form" @submit.prevent="save">
-        <label class="toggle-row">
-          <input v-model="settings.barkPushEnabled" type="checkbox" :disabled="saving" />
-          <span>Bark (iOS push)</span>
-        </label>
+      <!-- Bark push: a device key the user saves directly. The Save button
+           commits Bark settings only — email has its own buttons above. -->
+      <form class="channel" @submit.prevent="save">
+        <div class="channel-head">
+          <span class="channel-label">
+            Bark
+            <small class="muted">iOS push</small>
+          </span>
+          <label class="toggle-row">
+            <input v-model="settings.barkPushEnabled" type="checkbox" :disabled="saving" />
+            <span>Enable</span>
+          </label>
+        </div>
 
         <label v-if="settings.barkPushEnabled" class="bark-key">
           Bark key
@@ -187,9 +193,12 @@ onMounted(async () => {
           </small>
         </label>
 
-        <button type="submit" :disabled="saving">
-          {{ saving ? 'Saving…' : 'Save' }}
-        </button>
+        <div class="channel-foot">
+          <button type="submit" class="sm" :disabled="saving">
+            {{ saving ? 'Saving…' : 'Save Bark' }}
+          </button>
+          <span v-if="saved" class="ok channel-state">Saved.</span>
+        </div>
       </form>
     </template>
 
@@ -209,37 +218,59 @@ onMounted(async () => {
 <style scoped>
 .push-intro {
   margin-top: 0;
+  margin-bottom: 1.25rem;
+  line-height: 1.55;
 }
-.email-push {
+/* Email and Bark are parallel channels — same head + body shape so they read
+   as a matched pair. */
+.channel {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  padding-bottom: 0.75rem;
-  margin-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border, #e2e2e2);
+  gap: 0.6rem;
 }
-.email-head {
+.channel + .channel {
+  padding-top: 1.25rem;
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--rule, #e3e0d8);
+}
+.channel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
 }
-.email-state {
+.channel-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink-soft, #4a4844);
+}
+.channel-label small {
+  font-weight: 400;
+  padding: 0;
+  word-break: break-all;
+}
+/* Channel action buttons size to content and sit at the start, not stretched. */
+.channel > button {
+  align-self: flex-start;
+}
+.channel-state {
   margin: 0;
+  padding: 0;
 }
 .ghost.sm.danger {
   color: var(--danger, #c62828);
 }
-.push-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
 .toggle-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ink-soft, #4a4844);
 }
 .toggle-row input {
   width: auto;
@@ -247,10 +278,19 @@ onMounted(async () => {
 .bark-key {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.35rem;
+}
+.channel-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.channel-foot button {
+  align-self: flex-start;
 }
 .ok {
   color: var(--ok, #2e7d32);
   margin: 0;
+  padding: 0;
 }
 </style>

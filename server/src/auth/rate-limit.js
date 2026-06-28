@@ -51,3 +51,19 @@ export const writeLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many requests. Slow down and try again shortly.' },
 });
+
+/**
+ * Limiter for the email-push confirmation send. Each request mails a real
+ * message to the user's address, so this is an email-bomb vector if left on the
+ * generous shared writeLimiter. Keyed by user id (the route is behind
+ * requireAuth) so the cap is per-recipient, not per-IP — users behind a shared
+ * NAT don't throttle each other.
+ */
+export const emailConfirmLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  limit: 5, // 5 confirmation emails per hour per user
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => String(req.user?.id ?? req.ip),
+  message: { error: 'Too many confirmation emails requested. Try again later.' },
+});

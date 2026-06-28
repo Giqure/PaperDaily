@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth/middleware.js';
-import { writeLimiter } from '../auth/rate-limit.js';
+import { writeLimiter, emailConfirmLimiter } from '../auth/rate-limit.js';
 import {
   updateBarkSettings,
   setEmailPushEnabled,
@@ -84,7 +84,7 @@ router.put('/push', writeLimiter, (req, res) => {
  * one-time confirmation link to the user's account address; email push only
  * actually turns on once they click it. No-op if already enabled.
  */
-router.post('/push/email/request', writeLimiter, async (req, res) => {
+router.post('/push/email/request', emailConfirmLimiter, writeLimiter, async (req, res) => {
   if (req.user.email_push_enabled) {
     return res.json({ status: 'already-on' });
   }
