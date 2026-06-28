@@ -341,6 +341,57 @@ const migrations = [
         ],
         interests: 'robot dataset, benchmark, evaluation, reproducibility',
       },
+      {
+        "name": "腿足机器人RL运动控制",
+        "queries": [
+          "all:legged AND all:locomotion AND all:reinforcement AND all:learning",
+          "all:quadruped AND all:locomotion AND all:reinforcement AND all:learning",
+          "all:legged AND all:robot AND all:locomotion AND all:policy",
+          "all:quadruped AND all:robot AND all:control AND all:policy"
+        ],
+        "interests": "legged locomotion, quadruped robot, quadrupedal locomotion, robot motion control, locomotion policy, reinforcement learning, deep reinforcement learning, imitation learning, motion imitation, adversarial motion priors, AMP, sim-to-real, domain randomization, policy transfer, rough terrain, stairs, obstacle traversal, parkour, agile locomotion, dynamic locomotion, perceptive locomotion, vision-based locomotion, exteroceptive locomotion, proprioceptive locomotion"
+      },
+      {
+        "name": "四足机器人Sim2Real与策略迁移",
+        "queries": [
+          "all:quadruped AND all:sim-to-real",
+          "all:quadrupedal AND all:sim2real",
+          "all:legged AND all:robot AND all:domain AND all:randomization",
+          "all:legged AND all:robot AND all:policy AND all:transfer"
+        ],
+        "interests": "legged locomotion, quadruped robot, quadrupedal locomotion, robot motion control, locomotion policy, reinforcement learning, deep reinforcement learning, imitation learning, motion imitation, adversarial motion priors, AMP, sim-to-real, domain randomization, policy transfer, rough terrain, stairs, obstacle traversal, parkour, agile locomotion, dynamic locomotion, perceptive locomotion, vision-based locomotion, exteroceptive locomotion, proprioceptive locomotion"
+      },
+      {
+        "name": "腿足运动模仿与运动先验",
+        "queries": [
+          "all:legged AND all:locomotion AND all:imitation AND all:learning",
+          "all:quadruped AND all:motion AND all:imitation",
+          "all:legged AND all:adversarial AND all:motion AND all:prior",
+          "all:legged AND all:locomotion AND all:AMP"
+        ],
+        "interests": "legged locomotion, quadruped robot, quadrupedal locomotion, robot motion control, locomotion policy, reinforcement learning, deep reinforcement learning, imitation learning, motion imitation, adversarial motion priors, AMP, sim-to-real, domain randomization, policy transfer, rough terrain, stairs, obstacle traversal, parkour, agile locomotion, dynamic locomotion, perceptive locomotion, vision-based locomotion, exteroceptive locomotion, proprioceptive locomotion"
+      },
+      {
+        "name": "复杂地形与敏捷腿足运动",
+        "queries": [
+          "all:quadruped AND all:rough AND all:terrain",
+          "all:legged AND all:uneven AND all:terrain",
+          "all:legged AND all:robot AND all:parkour",
+          "all:quadruped AND all:agile AND all:locomotion"
+        ],
+        "interests": "legged locomotion, quadruped robot, quadrupedal locomotion, robot motion control, locomotion policy, reinforcement learning, deep reinforcement learning, imitation learning, motion imitation, adversarial motion priors, AMP, sim-to-real, domain randomization, policy transfer, rough terrain, stairs, obstacle traversal, parkour, agile locomotion, dynamic locomotion, perceptive locomotion, vision-based locomotion, exteroceptive locomotion, proprioceptive locomotion"
+      },
+      {
+        "name": "感知驱动腿足运动控制",
+        "queries": [
+          "all:perceptive AND all:locomotion",
+          "all:vision-based AND all:locomotion",
+          "all:terrain-aware AND all:legged AND all:robot",
+          "all:exteroceptive AND all:locomotion",
+          "all:proprioceptive AND all:locomotion"
+        ],
+        "interests": "legged locomotion, quadruped robot, quadrupedal locomotion, robot motion control, locomotion policy, reinforcement learning, deep reinforcement learning, imitation learning, motion imitation, adversarial motion priors, AMP, sim-to-real, domain randomization, policy transfer, rough terrain, stairs, obstacle traversal, parkour, agile locomotion, dynamic locomotion, perceptive locomotion, vision-based locomotion, exteroceptive locomotion, proprioceptive locomotion"
+      }
     ];
     const insScope = d.prepare(
       'INSERT INTO scopes (name, queries, interests) VALUES (@name, @queries, @interests)'
@@ -484,6 +535,81 @@ const migrations = [
         ON daily_scopes(digest_date, scope_id);
       CREATE INDEX idx_daily_scopes_scope ON daily_scopes(scope_id);
     `);
+  },
+
+  // 0012 — seed additional legged-locomotion scopes.
+  //
+  // Editing the earlier seed only affects fresh databases. Existing deployments
+  // have already applied that migration, so add these scopes idempotently here.
+  (d) => {
+    const seed = [
+      {
+        name: '腿足机器人RL运动控制',
+        queries: [
+          'all:legged AND all:locomotion AND all:reinforcement AND all:learning',
+          'all:quadruped AND all:locomotion AND all:reinforcement AND all:learning',
+          'all:legged AND all:robot AND all:locomotion AND all:policy',
+          'all:quadruped AND all:robot AND all:control AND all:policy',
+        ],
+        interests:
+          'legged locomotion, quadruped robot, quadrupedal locomotion, robot motion control, locomotion policy, reinforcement learning, deep reinforcement learning, imitation learning, motion imitation, adversarial motion priors, AMP, sim-to-real, domain randomization, policy transfer, rough terrain, stairs, obstacle traversal, parkour, agile locomotion, dynamic locomotion, perceptive locomotion, vision-based locomotion, exteroceptive locomotion, proprioceptive locomotion',
+      },
+      {
+        name: '四足机器人Sim2Real与策略迁移',
+        queries: [
+          'all:quadruped AND all:sim-to-real',
+          'all:quadrupedal AND all:sim2real',
+          'all:legged AND all:robot AND all:domain AND all:randomization',
+          'all:legged AND all:robot AND all:policy AND all:transfer',
+        ],
+        interests:
+          'legged locomotion, quadruped robot, quadrupedal locomotion, robot motion control, locomotion policy, reinforcement learning, deep reinforcement learning, imitation learning, motion imitation, adversarial motion priors, AMP, sim-to-real, domain randomization, policy transfer, rough terrain, stairs, obstacle traversal, parkour, agile locomotion, dynamic locomotion, perceptive locomotion, vision-based locomotion, exteroceptive locomotion, proprioceptive locomotion',
+      },
+      {
+        name: '腿足运动模仿与运动先验',
+        queries: [
+          'all:legged AND all:locomotion AND all:imitation AND all:learning',
+          'all:quadruped AND all:motion AND all:imitation',
+          'all:legged AND all:adversarial AND all:motion AND all:prior',
+          'all:legged AND all:locomotion AND all:AMP',
+        ],
+        interests:
+          'legged locomotion, quadruped robot, quadrupedal locomotion, robot motion control, locomotion policy, reinforcement learning, deep reinforcement learning, imitation learning, motion imitation, adversarial motion priors, AMP, sim-to-real, domain randomization, policy transfer, rough terrain, stairs, obstacle traversal, parkour, agile locomotion, dynamic locomotion, perceptive locomotion, vision-based locomotion, exteroceptive locomotion, proprioceptive locomotion',
+      },
+      {
+        name: '复杂地形与敏捷腿足运动',
+        queries: [
+          'all:quadruped AND all:rough AND all:terrain',
+          'all:legged AND all:uneven AND all:terrain',
+          'all:legged AND all:robot AND all:parkour',
+          'all:quadruped AND all:agile AND all:locomotion',
+        ],
+        interests:
+          'legged locomotion, quadruped robot, quadrupedal locomotion, robot motion control, locomotion policy, reinforcement learning, deep reinforcement learning, imitation learning, motion imitation, adversarial motion priors, AMP, sim-to-real, domain randomization, policy transfer, rough terrain, stairs, obstacle traversal, parkour, agile locomotion, dynamic locomotion, perceptive locomotion, vision-based locomotion, exteroceptive locomotion, proprioceptive locomotion',
+      },
+      {
+        name: '感知驱动腿足运动控制',
+        queries: [
+          'all:perceptive AND all:locomotion',
+          'all:vision-based AND all:locomotion',
+          'all:terrain-aware AND all:legged AND all:robot',
+          'all:exteroceptive AND all:locomotion',
+          'all:proprioceptive AND all:locomotion',
+        ],
+        interests:
+          'legged locomotion, quadruped robot, quadrupedal locomotion, robot motion control, locomotion policy, reinforcement learning, deep reinforcement learning, imitation learning, motion imitation, adversarial motion priors, AMP, sim-to-real, domain randomization, policy transfer, rough terrain, stairs, obstacle traversal, parkour, agile locomotion, dynamic locomotion, perceptive locomotion, vision-based locomotion, exteroceptive locomotion, proprioceptive locomotion',
+      },
+    ];
+    const insScope = d.prepare(
+      'INSERT OR IGNORE INTO scopes (name, queries, interests) VALUES (@name, @queries, @interests)'
+    );
+    for (const sc of seed) {
+      insScope.run({
+        name: sc.name,
+        queries: JSON.stringify(sc.queries),
+        interests: sc.interests,
+      });
+    }
   },
 ];
 
