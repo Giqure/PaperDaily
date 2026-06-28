@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fetchQuery, parseAtom } from './arxiv.js';
 import { curate } from './curate.js';
 import { scopeWithDefaults } from './config.js';
+import { pushAll } from './push.js';
 import { scopesWithSubscribers } from '../subscriptions/queries.js';
 import { importArchiveDay, recentArchivedExternalIds } from '../digest/queries.js';
 
@@ -149,6 +150,14 @@ export async function runReporter(cfg) {
     } catch (err) {
       log('存档 JSON 失败 (忽略):', err.message);
     }
+  }
+
+  // Notify configured channels (Bark / email). Best-effort — never blocks the
+  // digest from being stored if a channel fails.
+  try {
+    await pushAll(cfg, scopeResults, dateStr);
+  } catch (err) {
+    log('推送阶段异常 (忽略):', err?.message || err);
   }
 
   return { date: dateStr, scopes: summary };
