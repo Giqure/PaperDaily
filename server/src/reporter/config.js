@@ -40,6 +40,9 @@ export function reporterConfig() {
     openaiModel: str('OPENAI_MODEL', 'gpt-4o-mini'),
     apiMaxTokens: num('OPENAI_MAX_TOKENS', 8000),
     apiRetries: num('OPENAI_RETRIES', 3),
+    // Max curation requests in flight at once. Scopes are curated concurrently
+    // up to this bound; arXiv fetching stays serial regardless.
+    openaiConcurrency: Math.max(1, num('OPENAI_CONCURRENCY', 4)),
 
     // Per-scope selection knobs. The DB scope catalog only stores name/queries/
     // interests, so these globals fill in everything the per-day snapshot needs.

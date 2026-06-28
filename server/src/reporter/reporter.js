@@ -33,6 +33,23 @@ function recentEnough(published, lookbackDays) {
   return dt >= Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
 }
 
+// Run `task` over `items` with at most `limit` in flight at once, preserving
+// input order in the result array. Used to curate scopes concurrently while
+// keeping the OpenAI request fan-out bounded.
+async function mapWithConcurrency(items, limit, task) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await task(items[i], i);
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
+  await Promise.all(workers);
+  return results;
+}
+
 /**
  * Run every query in a scope, merge + dedup by arXiv id, keep the newest batch
  * (or recent window), drop already-archived ids, and cap to max_candidates.
@@ -89,20 +106,34 @@ export async function runReporter(cfg) {
   }
 
   log(`开始生成 ${dateStr} 日报, 共 ${catalog.length} 个被订阅范围`);
-  const scopeResults = [];
-  const summary = [];
 
+  // Phase 1 — gather candidates. Serial on purpose: arXiv fetches share a global
+  // min-interval pacing gate, so concurrency here would just violate politeness.
+  const gathered = [];
   for (const raw of catalog) {
     const scope = scopeWithDefaults(raw, cfg);
     log(`处理范围[${scope.name}]...`);
     const archivedIds = recentArchivedExternalIds(cutoffDateStr(scope.dedup_days));
     const candidates = await gatherCandidates(scope, archivedIds, cfg);
     log(`范围[${scope.name}] 候选数: ${candidates.length}`);
-    const items = candidates.length ? await curate(scope, candidates, cfg) : [];
-    log(`范围[${scope.name}] 入选数: ${items.length}`);
-    scopeResults.push({ scope, items });
-    summary.push({ name: scope.name, candidates: candidates.length, items: items.length });
+    gathered.push({ scope, candidates });
   }
+
+  // Phase 2 — curate. Each scope's curation (OpenAI calls + code lookups) is
+  // independent, so run them concurrently up to openaiConcurrency.
+  const items = await mapWithConcurrency(gathered, cfg.openaiConcurrency, async ({ scope, candidates }) => {
+    if (!candidates.length) return [];
+    const curated = await curate(scope, candidates, cfg);
+    log(`范围[${scope.name}] 入选数: ${curated.length}`);
+    return curated;
+  });
+
+  const scopeResults = gathered.map(({ scope }, i) => ({ scope, items: items[i] }));
+  const summary = gathered.map(({ scope, candidates }, i) => ({
+    name: scope.name,
+    candidates: candidates.length,
+    items: items[i].length,
+  }));
 
   const day = { date: dateStr, scopes: scopeResults };
   const res = importArchiveDay(day);
