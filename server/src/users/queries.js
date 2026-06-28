@@ -14,6 +14,21 @@ function s() {
       byEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
       byUid: db.prepare('SELECT * FROM users WHERE uid = ?'),
       byId: db.prepare('SELECT * FROM users WHERE id = ?'),
+
+      updatePushSettings: db.prepare(`
+        UPDATE users SET
+          email_push_enabled = @email_push_enabled,
+          bark_push_enabled  = @bark_push_enabled,
+          bark_key           = @bark_key
+        WHERE id = @id
+      `),
+
+      // Users who have at least one push channel enabled — the set the reporter
+      // fans out to after generating a digest.
+      withPushEnabled: db.prepare(`
+        SELECT * FROM users
+        WHERE email_push_enabled = 1 OR bark_push_enabled = 1
+      `),
     };
   }
   return stmts;
@@ -50,5 +65,37 @@ export function findByEmail(email) {
 
 export function findByUid(uid) {
   return s().byUid.get(uid);
+}
+
+/**
+ * Map a user row to their public push settings. The Bark key is sensitive-ish
+ * (it's a push capability token), but it's the user's own and they need to see
+ * what's stored to edit it, so it's returned to its owner.
+ */
+export function toPushSettings(row) {
+  if (!row) return null;
+  return {
+    emailPushEnabled: !!row.email_push_enabled,
+    barkPushEnabled: !!row.bark_push_enabled,
+    barkKey: row.bark_key ?? '',
+    // The address email push goes to — the account email, shown read-only.
+    email: row.email,
+  };
+}
+
+/** Persist a user's push settings. Returns the refreshed row. */
+export function updatePushSettings(userId, { emailPushEnabled, barkPushEnabled, barkKey }) {
+  s().updatePushSettings.run({
+    id: userId,
+    email_push_enabled: emailPushEnabled ? 1 : 0,
+    bark_push_enabled: barkPushEnabled ? 1 : 0,
+    bark_key: barkKey || null,
+  });
+  return s().byId.get(userId);
+}
+
+/** Users with at least one push channel enabled — the reporter's push targets. */
+export function usersWithPushEnabled() {
+  return s().withPushEnabled.all();
 }
 

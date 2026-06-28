@@ -397,6 +397,18 @@ const migrations = [
       DROP TABLE IF EXISTS keywords_library;
     `);
   },
+
+  // 0009 — per-user push settings. Each user decides whether to receive the
+  // daily digest by email (to their account address) and/or Bark (to their own
+  // device key). Transport creds (SMTP login, Bark server) stay operator-level
+  // config; only the recipient-facing toggles + Bark key live here.
+  (d) => {
+    d.exec(`
+      ALTER TABLE users ADD COLUMN email_push_enabled INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN bark_push_enabled  INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN bark_key           TEXT;
+    `);
+  },
 ];
 
 import { randomUUID } from 'node:crypto';

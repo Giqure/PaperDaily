@@ -50,3 +50,8 @@ export const papersApi = {
   setState: (id, state) =>
     request(`/papers/${id}/state`, { method: 'PUT', body: { state } }),
 };
+
+export const settingsApi = {
+  getPush: () => request('/settings/push'),
+  updatePush: (payload) => request('/settings/push', { method: 'PUT', body: payload }),
+};

@@ -15,6 +15,7 @@ import { csrfOriginCheck } from './auth/csrf.js';
 import authRoutes from './auth/routes.js';
 import subscriptionRoutes from './subscriptions/routes.js';
 import paperRoutes from './papers/routes.js';
+import settingsRoutes from './settings/routes.js';
 import { reporterConfig } from './reporter/config.js';
 import { startScheduler } from './reporter/scheduler.js';
 
@@ -95,6 +96,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/papers', paperRoutes);
+app.use('/api/settings', settingsRoutes);
 
 app.get('/api/welcome', (req, res) => {
   res.json({

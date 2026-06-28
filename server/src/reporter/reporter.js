@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fetchQuery, parseAtom } from './arxiv.js';
 import { curate } from './curate.js';
 import { scopeWithDefaults } from './config.js';
-import { pushAll } from './push.js';
+import { pushToUsers } from './push.js';
 import { scopesWithSubscribers } from '../subscriptions/queries.js';
 import { importArchiveDay, recentArchivedExternalIds } from '../digest/queries.js';
 
@@ -152,10 +152,10 @@ export async function runReporter(cfg) {
     }
   }
 
-  // Notify configured channels (Bark / email). Best-effort — never blocks the
-  // digest from being stored if a channel fails.
+  // Fan the digest out to every push-enabled user (Bark / email), scoped to the
+  // scopes each follows. Best-effort — never blocks the stored digest.
   try {
-    await pushAll(cfg, scopeResults, dateStr);
+    await pushToUsers(cfg, scopeResults, dateStr);
   } catch (err) {
     log('推送阶段异常 (忽略):', err?.message || err);
   }

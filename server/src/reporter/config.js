@@ -25,16 +25,6 @@ function str(name, fallback) {
   return raw == null || raw.trim() === '' ? fallback : raw.trim();
 }
 
-// Split a comma/whitespace/newline-separated env var into a clean list.
-function list(name) {
-  const raw = process.env[name];
-  if (!raw) return [];
-  return raw
-    .split(/[,\n]/)
-    .map((x) => x.trim())
-    .filter(Boolean);
-}
-
 export function reporterConfig() {
   return {
     // Scheduling. Disabled by default — the server only arms the daily timer
@@ -77,9 +67,10 @@ export function reporterConfig() {
     // with the Python archive and easy debugging. Unset = DB only.
     archiveDir: str('REPORTER_ARCHIVE_DIR', ''),
 
-    // Operator-level push: after a run, notify these channels with a summary of
-    // everything generated (not per-user — see reporter/push.js). Each channel
-    // is skipped silently when its required config is absent.
+    // Per-user push transport. After a run, each push-enabled user receives a
+    // digest of their own scopes (see reporter/push.js). Recipients, channel
+    // toggles, and each user's Bark key are per-user DB state; only the shared
+    // transport (Bark server, SMTP login) is operator-level config here.
     push: {
       // 'summary' (one digest), 'per_scope' (one push per scope), or
       // 'per_item' (one push per pushed paper). Mirrors the Python push_mode.
@@ -87,16 +78,16 @@ export function reporterConfig() {
       // (REPORTER_PUSH_N), set in scopeWithDefaults().
       mode: str('REPORTER_PUSH_MODE', 'summary'),
 
-      // Bark (iOS push). Plain HTTP, no dependency.
+      // Bark (iOS push). Plain HTTP, no dependency. The server URL is shared;
+      // each user supplies their own device key in their settings.
       bark: {
         server: str('BARK_SERVER', 'https://api.day.app'),
-        keys: list('BARK_KEYS').length ? list('BARK_KEYS') : list('BARK_KEY'),
         bodyLimit: Math.max(800, Math.min(num('BARK_BODY_LIMIT', 3200), 3800)),
       },
 
-      // Email (SMTP via nodemailer).
+      // Email (SMTP via nodemailer). The sending mailbox/login is operator-
+      // level; each user receives at their own account email.
       email: {
-        to: list('EMAIL_TO'),
         from: str('EMAIL_FROM', ''),
         subjectPrefix: str('EMAIL_SUBJECT_PREFIX', '论文日报'),
         smtpHost: str('SMTP_HOST', ''),

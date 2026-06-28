@@ -5,6 +5,7 @@ import { auth } from '../store.js';
 import { papersApi } from '../api.js';
 import KeywordManager from '../components/KeywordManager.vue';
 import PaperCard from '../components/PaperCard.vue';
+import PushSettings from '../components/PushSettings.vue';
 
 const router = useRouter();
 const loggingOut = ref(false);
@@ -246,7 +247,7 @@ onBeforeUnmount(() => observer?.disconnect());
         </div>
       </section>
 
-      <!-- Right rail: scope subscriptions + scrollspy nav -->
+      <!-- Right rail: scope subscriptions + scrollspy nav + push settings -->
       <aside class="space-side">
         <KeywordManager
           :active-scope="activeScope"
@@ -254,6 +255,7 @@ onBeforeUnmount(() => observer?.disconnect());
           @changed="loadDaily"
           @navigate="scrollToScope"
         />
+        <PushSettings />
       </aside>
     </div>
   </div>

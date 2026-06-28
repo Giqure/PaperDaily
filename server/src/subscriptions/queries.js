@@ -40,6 +40,14 @@ function s() {
       subscribedScopeIds: db.prepare(
         'SELECT scope_id FROM subscriptions WHERE user_id = ?'
       ),
+      // Names of the scopes a user follows — used to slice the day's generated
+      // digest down to each push-enabled user's own scopes.
+      subscribedScopeNames: db.prepare(`
+        SELECT sc.name AS name
+        FROM subscriptions sub
+        JOIN scopes sc ON sc.id = sub.scope_id
+        WHERE sub.user_id = ?
+      `),
 
       // Catalog
       scopeById: db.prepare(
@@ -149,6 +157,11 @@ export function getScope(scopeId) {
 /** Scope ids a user follows — used to build the daily feed. */
 export function subscribedScopeIds(userId) {
   return s().subscribedScopeIds.all(userId).map((r) => r.scope_id);
+}
+
+/** Scope names a user follows — used to target per-user push digests. */
+export function subscribedScopeNames(userId) {
+  return s().subscribedScopeNames.all(userId).map((r) => r.name);
 }
 
 /**
