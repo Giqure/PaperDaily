@@ -427,6 +427,64 @@ const migrations = [
       CREATE INDEX idx_email_push_tokens_user ON email_push_tokens(user_id);
     `);
   },
+
+  // 0011 — identify scopes by id, not name.
+  //
+  // Until now `scopes.name` was globally UNIQUE and every per-day record was
+  // keyed by name (daily_scopes.name, joined back to scopes by name). That made
+  // it impossible for two users to author a private scope with the same name,
+  // and — if the constraint were merely relaxed — would silently merge two
+  // different users' same-named scopes in the feed. This migration moves the
+  // join key to scope_id end-to-end and relaxes name uniqueness to per-author,
+  // so identical names are allowed but never conflated.
+  //
+  // Runs with foreign_keys OFF (see migrate()), so rebuilding `scopes` does not
+  // cascade-delete subscriptions; ids are preserved so all references hold.
+  (d) => {
+    // 1) Rebuild `scopes` to drop the inline global UNIQUE(name). Ids and the
+    //    created_by attribution are carried over verbatim.
+    d.exec(`
+      CREATE TABLE scopes_new (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name       TEXT NOT NULL,
+        queries    TEXT NOT NULL,
+        interests  TEXT,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO scopes_new (id, name, queries, interests, created_by, created_at)
+        SELECT id, name, queries, interests, created_by, created_at FROM scopes;
+      DROP TABLE scopes;
+      ALTER TABLE scopes_new RENAME TO scopes;
+
+      -- Names are unique per author. created_by NULL (seeded) maps to bucket 0,
+      -- which never collides with a real user id (AUTOINCREMENT starts at 1), so
+      -- seeded names stay unique among themselves while each user gets their own
+      -- namespace.
+      CREATE UNIQUE INDEX idx_scopes_author_name
+        ON scopes(COALESCE(created_by, 0), name);
+      CREATE INDEX idx_scopes_created_by ON scopes(created_by);
+    `);
+
+    // 2) Add daily_scopes.scope_id and backfill from the (still globally unique
+    //    at this instant) name. Orphan rows whose name matches no scope keep a
+    //    NULL scope_id — unreachable in the feed, exactly as before. ON DELETE
+    //    SET NULL preserves archive history when a scope is later removed.
+    d.exec(`
+      ALTER TABLE daily_scopes
+        ADD COLUMN scope_id INTEGER REFERENCES scopes(id) ON DELETE SET NULL;
+
+      UPDATE daily_scopes
+        SET scope_id = (SELECT sc.id FROM scopes sc WHERE sc.name = daily_scopes.name)
+        WHERE scope_id IS NULL;
+
+      -- Matching is by id now; a scope name is unique per day per scope_id.
+      DROP INDEX IF EXISTS idx_daily_scopes_date_name;
+      CREATE UNIQUE INDEX idx_daily_scopes_date_scope
+        ON daily_scopes(digest_date, scope_id);
+      CREATE INDEX idx_daily_scopes_scope ON daily_scopes(scope_id);
+    `);
+  },
 ];
 
 import { randomUUID } from 'node:crypto';
@@ -438,16 +496,34 @@ function genUid() {
 
 export function migrate() {
   const current = db.pragma('user_version', { simple: true });
+  if (current >= migrations.length) return current;
 
-  for (let version = current; version < migrations.length; version++) {
-    const run = migrations[version];
-    const tx = db.transaction(() => {
-      run(db);
-      // user_version can't be parameterized; version is a controlled integer.
-      db.pragma(`user_version = ${version + 1}`);
-    });
-    tx();
-    console.log(`Applied migration ${String(version + 1).padStart(4, '0')}`);
+  // FK enforcement is toggled around the whole run because some migrations
+  // rebuild FK-target tables (e.g. dropping `scopes` to change its uniqueness
+  // would otherwise cascade-delete `subscriptions`). The pragma is a no-op
+  // inside a transaction, so it must sit outside the per-migration tx; a
+  // foreign_key_check inside each tx re-validates before we commit.
+  db.pragma('foreign_keys = OFF');
+  try {
+    for (let version = current; version < migrations.length; version++) {
+      const run = migrations[version];
+      const tx = db.transaction(() => {
+        run(db);
+        const violations = db.pragma('foreign_key_check');
+        if (violations.length) {
+          throw new Error(
+            `Migration ${String(version + 1).padStart(4, '0')} produced ` +
+              `foreign-key violations: ${JSON.stringify(violations)}`
+          );
+        }
+        // user_version can't be parameterized; version is a controlled integer.
+        db.pragma(`user_version = ${version + 1}`);
+      });
+      tx();
+      console.log(`Applied migration ${String(version + 1).padStart(4, '0')}`);
+    }
+  } finally {
+    db.pragma('foreign_keys = ON');
   }
 
   return db.pragma('user_version', { simple: true });

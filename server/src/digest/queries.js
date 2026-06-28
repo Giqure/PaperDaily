@@ -26,12 +26,23 @@ function s() {
       dailyScopeByDateName: db.prepare(
         'SELECT id FROM daily_scopes WHERE digest_date = ? AND name = ?'
       ),
+      dailyScopeByDateScope: db.prepare(
+        'SELECT id FROM daily_scopes WHERE digest_date = ? AND scope_id = ?'
+      ),
+      // Resolve a catalog scope id from its name. Names are unique per author,
+      // so this can match more than one row across authors; the reporter always
+      // passes scope.id directly, and this lookup is only a fallback for archive
+      // JSON imports that predate scope ids — there the oldest match is the
+      // seeded/canonical scope, so order by id.
+      scopeIdByName: db.prepare(
+        'SELECT id FROM scopes WHERE name = ? ORDER BY id LIMIT 1'
+      ),
       insertDailyScope: db.prepare(`
         INSERT INTO daily_scopes
-          (digest_date, name, queries, interests, top_n, push_n, max_candidates,
+          (digest_date, scope_id, name, queries, interests, top_n, push_n, max_candidates,
            query_delay_seconds, same_day_only, lookback_days, dedup_days)
         VALUES
-          (@digest_date, @name, @queries, @interests, @top_n, @push_n, @max_candidates,
+          (@digest_date, @scope_id, @name, @queries, @interests, @top_n, @push_n, @max_candidates,
            @query_delay_seconds, @same_day_only, @lookback_days, @dedup_days)
       `),
       // Re-importing the same day replaces the membership cleanly.
@@ -87,10 +98,18 @@ export function upsertPaper(paper) {
  * Insert or replace a (date, scope) record and return its id. If the scope
  * already exists for that day we reuse the row and clear its membership so the
  * caller can re-link papers idempotently.
+ *
+ * Records are keyed by scope_id. The reporter passes scope.id directly; archive
+ * JSON imports (which predate scope ids) fall back to resolving the id from the
+ * scope name. A name that matches no catalog scope leaves scope_id NULL — the
+ * row is archived but unreachable in the feed, and dedup falls back to name.
  */
 export function upsertDailyScope(digestDate, scope) {
+  const scopeId =
+    scope.id != null ? scope.id : s().scopeIdByName.get(scope.name)?.id ?? null;
   const row = {
     digest_date: digestDate,
+    scope_id: scopeId,
     name: scope.name,
     queries: scope.queries ? JSON.stringify(scope.queries) : null,
     interests: scope.interests ?? null,
@@ -102,7 +121,12 @@ export function upsertDailyScope(digestDate, scope) {
     lookback_days: scope.lookback_days ?? null,
     dedup_days: scope.dedup_days ?? null,
   };
-  const existing = s().dailyScopeByDateName.get(digestDate, scope.name);
+  // Prefer the id-keyed lookup; fall back to name only when the scope is
+  // unresolved (legacy archive row with no matching catalog scope).
+  const existing =
+    scopeId != null
+      ? s().dailyScopeByDateScope.get(digestDate, scopeId)
+      : s().dailyScopeByDateName.get(digestDate, scope.name);
   if (existing) {
     s().deleteScopePapers.run(existing.id);
     return existing.id;

@@ -24,9 +24,23 @@ function s() {
       consumeAllForUser: db.prepare(
         "UPDATE email_push_tokens SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL"
       ),
+      // Prune dead rows: anything already used or past its expiry is inert and
+      // only takes up space. expires_at and datetime('now') are both UTC
+      // 'YYYY-MM-DD HH:MM:SS', so a lexical comparison is also chronological.
+      pruneDead: db.prepare(
+        "DELETE FROM email_push_tokens WHERE used_at IS NOT NULL OR expires_at < datetime('now')"
+      ),
     };
   }
   return stmts;
+}
+
+/**
+ * Delete tokens that can no longer be used (already consumed or expired). Cheap
+ * housekeeping so the table doesn't grow without bound; safe to call anytime.
+ */
+export function pruneEmailPushTokens() {
+  return s().pruneDead.run().changes;
 }
 
 /**
@@ -34,6 +48,9 @@ function s() {
  * so only the most recent link works. Returns the opaque token string.
  */
 export function createEmailPushToken(userId) {
+  // Opportunistic housekeeping: clear dead rows so the table stays small
+  // without a separate scheduled job.
+  s().pruneDead.run();
   s().consumeAllForUser.run(userId);
   const token = randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + TOKEN_TTL_MINUTES * 60_000)

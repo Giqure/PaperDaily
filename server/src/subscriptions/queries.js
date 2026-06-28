@@ -40,21 +40,16 @@ function s() {
       subscribedScopeIds: db.prepare(
         'SELECT scope_id FROM subscriptions WHERE user_id = ?'
       ),
-      // Names of the scopes a user follows — used to slice the day's generated
-      // digest down to each push-enabled user's own scopes.
-      subscribedScopeNames: db.prepare(`
-        SELECT sc.name AS name
-        FROM subscriptions sub
-        JOIN scopes sc ON sc.id = sub.scope_id
-        WHERE sub.user_id = ?
-      `),
 
       // Catalog
       scopeById: db.prepare(
         'SELECT id, name, queries, interests, created_by FROM scopes WHERE id = ?'
       ),
-      scopeByName: db.prepare(
-        'SELECT id, name, queries, interests, created_by FROM scopes WHERE name = ?'
+      // A name collision within this user's catalog view: a seeded scope or one
+      // they authored. Another user's private scope of the same name is invisible
+      // to them and does NOT collide — names are unique per author, not global.
+      visibleScopeByName: db.prepare(
+        'SELECT id FROM scopes WHERE name = @name AND (created_by IS NULL OR created_by = @user_id)'
       ),
       // The catalog a user may pick from: seeded scopes (no author) plus the
       // scopes they authored themselves. Another user's authored scope is
@@ -161,32 +156,38 @@ export function getScope(scopeId) {
   return scopeToPublic(s().scopeById.get(scopeId));
 }
 
-/** Scope ids a user follows — used to build the daily feed. */
+/** Scope ids a user follows — used to build the daily feed and push slices. */
 export function subscribedScopeIds(userId) {
   return s().subscribedScopeIds.all(userId).map((r) => r.scope_id);
-}
-
-/** Scope names a user follows — used to target per-user push digests. */
-export function subscribedScopeNames(userId) {
-  return s().subscribedScopeNames.all(userId).map((r) => r.name);
 }
 
 /**
  * Author a new catalog scope attributed to a user. The caller must have already
  * checked the authored-scope cap. Returns:
  *   { scope }            on success
- *   { duplicateName: true } if a scope with that name already exists
+ *   { duplicateName: true } if a scope with that name already exists in this
+ *                        user's catalog view (a seeded scope or one they
+ *                        authored). Another user's private scope of the same
+ *                        name is invisible and does not collide — names are
+ *                        unique per author, not global.
  */
 export function createScope(userId, { name, queries, interests }) {
-  const existing = s().scopeByName.get(name);
+  const existing = s().visibleScopeByName.get({ name, user_id: userId });
   if (existing) return { duplicateName: true };
-  const info = s().insertScope.run({
-    name,
-    queries: JSON.stringify(queries),
-    interests: interests || null,
-    created_by: userId,
-  });
-  return { scope: scopeToPublic(s().scopeById.get(info.lastInsertRowid)) };
+  try {
+    const info = s().insertScope.run({
+      name,
+      queries: JSON.stringify(queries),
+      interests: interests || null,
+      created_by: userId,
+    });
+    return { scope: scopeToPublic(s().scopeById.get(info.lastInsertRowid)) };
+  } catch (err) {
+    // The per-author unique index (created_by, name) is the backstop against a
+    // race between the check above and the insert.
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') return { duplicateName: true };
+    throw err;
+  }
 }
 
 /**

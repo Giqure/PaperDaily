@@ -104,6 +104,7 @@ export function reporterConfig() {
 // knobs, producing the per-scope shape the rest of the pipeline expects.
 export function scopeWithDefaults(scope, cfg) {
   return {
+    id: scope.id,
     name: scope.name,
     queries: scope.queries,
     interests: scope.interests || '',

@@ -7,14 +7,13 @@ function s() {
       byId: db.prepare('SELECT id FROM papers WHERE id = ?'),
 
       // The latest digest date that has any scope the user follows. Scopes are
-      // matched by name (scopes.name = daily_scopes.name), since daily_scopes is
-      // the per-day snapshot keyed by name.
+      // matched by id (daily_scopes.scope_id = subscriptions.scope_id), so two
+      // users' same-named scopes are never conflated.
       latestDate: db.prepare(`
         SELECT MAX(ds.digest_date) AS d
         FROM daily_scopes ds
-        JOIN scopes sc ON sc.name = ds.name
-        JOIN subscriptions sub ON sub.scope_id = sc.id
-        WHERE sub.user_id = @user_id
+        JOIN subscriptions sub
+          ON sub.scope_id = ds.scope_id AND sub.user_id = @user_id
       `),
 
       // Daily feed: curated papers under the user's followed scopes on a given
@@ -46,8 +45,7 @@ function s() {
                GROUP_CONCAT(DISTINCT ds.name) AS scope_names
         FROM scope_papers spr
         JOIN daily_scopes ds ON ds.id = spr.daily_scope_id
-        JOIN scopes sc ON sc.name = ds.name
-        JOIN subscriptions sub ON sub.scope_id = sc.id AND sub.user_id = @user_id
+        JOIN subscriptions sub ON sub.scope_id = ds.scope_id AND sub.user_id = @user_id
         JOIN papers p ON p.id = spr.paper_id
         LEFT JOIN user_papers up ON up.paper_id = p.id AND up.user_id = @user_id
         WHERE ds.digest_date = @date

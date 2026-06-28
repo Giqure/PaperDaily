@@ -8,7 +8,7 @@
 // one user/channel never aborts the rest, and never blocks the stored digest.
 
 import { usersWithPushEnabled } from '../users/queries.js';
-import { subscribedScopeNames } from '../subscriptions/queries.js';
+import { subscribedScopeIds } from '../subscriptions/queries.js';
 
 const log = (...parts) => console.log('[reporter:push]', ...parts);
 
@@ -26,10 +26,11 @@ function truncate(text, limit) {
   return out + '...';
 }
 
-// Keep only the scopes this user follows from the day's full results.
-function sliceForUser(scopeResults, scopeNames) {
-  const set = new Set(scopeNames);
-  return scopeResults.filter((r) => set.has(r.scope.name));
+// Keep only the scopes this user follows from the day's full results. Matched
+// by scope id, so two users' same-named scopes are never conflated.
+function sliceForUser(scopeResults, scopeIds) {
+  const set = new Set(scopeIds);
+  return scopeResults.filter((r) => set.has(r.scope.id));
 }
 
 // Flatten the first push_n items of every scope into [{ scope, item }, ...].
@@ -267,7 +268,7 @@ export async function pushToUsers(cfg, scopeResults, dateStr) {
   let emails = 0;
   let bark = 0;
   for (const user of users) {
-    const slice = sliceForUser(scopeResults, subscribedScopeNames(user.id));
+    const slice = sliceForUser(scopeResults, subscribedScopeIds(user.id));
     if (!slice.length) continue; // user follows nothing collected today
 
     if (user.bark_push_enabled && user.bark_key) {
