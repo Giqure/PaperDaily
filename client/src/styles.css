@@ -200,6 +200,14 @@ button.ghost:hover:not(:disabled) {
   border-color: var(--ink-faint);
 }
 
+/* Standalone action buttons in an auth card (those not inside a <form>, e.g.
+   "Back to log in" / "Request a new link") size to content by default, which
+   looks off beside the full-width form submit buttons in the same card. Stretch
+   them to match — but never the compact language toggle. */
+.auth-card > button:not(.lang-toggle) {
+  width: 100%;
+}
+
 .error {
   color: var(--maroon);
   font-size: 0.85rem;
