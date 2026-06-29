@@ -85,6 +85,31 @@ function s() {
         JOIN papers p ON p.id = sp.paper_id
         WHERE ds.digest_date >= @cutoff AND p.external_id IS NOT NULL
       `),
+
+      // The most recent digest date with any stored scope. Push (when it runs on
+      // its own schedule) delivers this day's digest.
+      latestDigestDate: db.prepare(
+        'SELECT MAX(digest_date) AS d FROM daily_scopes'
+      ),
+      // Reachable daily scopes for a date (scope_id present, so push can match
+      // them to subscriptions), with the push fan-out count.
+      dailyScopesForDate: db.prepare(`
+        SELECT id, scope_id, name, push_n
+        FROM daily_scopes
+        WHERE digest_date = @date AND scope_id IS NOT NULL
+        ORDER BY name
+      `),
+      // A daily scope's papers + enrichment, best rank first — the shape push
+      // builders expect (they slice to push_n themselves).
+      papersForDailyScope: db.prepare(`
+        SELECT p.external_id, p.title, p.abstract, p.authors, p.url, p.pdf_url,
+               p.published_at,
+               sp.tag, sp.tldr, sp.position, sp.zh_summary, sp.highlights, sp.code
+        FROM scope_papers sp
+        JOIN papers p ON p.id = sp.paper_id
+        WHERE sp.daily_scope_id = @daily_scope_id
+        ORDER BY sp.rank ASC
+      `),
     };
   }
   return stmts;
@@ -197,6 +222,60 @@ export function maxRankForDailyScope(dailyScopeId) {
 export function recentArchivedExternalIds(cutoffDate) {
   const rows = s().recentExternalIds.all({ cutoff: cutoffDate });
   return new Set(rows.map((r) => r.id));
+}
+
+/**
+ * Rebuild the in-memory digest shape that push.js consumes, straight from the
+ * stored latest digest day. Lets push run on its own schedule (decoupled from a
+ * report run) by reading what was already generated rather than re-curating.
+ *
+ * Returns { date, scopeResults: [{ scope:{id,name,push_n}, items:[{ paper, ...enrichment }] }] }
+ * with date null (and empty results) when nothing has been digested yet. Field
+ * names mirror the reporter's runtime objects: paper.abs_url / pdf_url /
+ * published / authors[] (not the DB's url / pdf_url / published_at / CSV string).
+ */
+export function latestDigestForPush() {
+  const date = s().latestDigestDate.get()?.d ?? null;
+  if (!date) return { date: null, scopeResults: [] };
+
+  const scopeResults = s().dailyScopesForDate.all({ date }).map((dsRow) => {
+    const items = s()
+      .papersForDailyScope.all({ daily_scope_id: dsRow.id })
+      .map((r) => ({
+        paper: {
+          id: r.external_id,
+          title: r.title,
+          summary: r.abstract,
+          // push builders treat authors as an array; the DB stores a CSV string.
+          authors: r.authors ? r.authors.split(',').map((a) => a.trim()).filter(Boolean) : [],
+          abs_url: r.url,
+          pdf_url: r.pdf_url,
+          published: r.published_at,
+        },
+        tag: r.tag ?? '',
+        tldr: r.tldr ?? '',
+        position: r.position ?? '',
+        zh_summary: r.zh_summary ?? '',
+        highlights: r.highlights ? safeJsonArray(r.highlights) : [],
+        code: r.code ?? '',
+      }));
+    return {
+      scope: { id: dsRow.scope_id, name: dsRow.name, push_n: dsRow.push_n ?? 0 },
+      items,
+    };
+  });
+
+  return { date, scopeResults };
+}
+
+// Parse a JSON-array column, tolerating bad data (returns []).
+function safeJsonArray(raw) {
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
 }
 
 /**

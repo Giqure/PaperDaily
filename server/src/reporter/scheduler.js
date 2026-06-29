@@ -1,50 +1,25 @@
-// Daily scheduler: fire runReporter() at each REPORTER_DAILY_TIME, interpreted
-// in Asia/Shanghai (fixed UTC+8). No-op unless REPORTER_ENABLED.
+// Daily scheduler: fire runReporter() at each REPORTER_DAILY_TIME and, when set,
+// runPush() at each REPORTER_PUSH_TIME — both Asia/Shanghai (fixed UTC+8). No-op
+// unless REPORTER_ENABLED.
 //
-// REPORTER_DAILY_TIME may list more than one time (comma-separated, e.g.
-// "06:32,20:30") to report multiple times a day. Each time gets its own
-// setTimeout-to-next-occurrence loop so they stay aligned to the wall clock
-// across drift. A shared running-guard serializes overlapping fires: the later
-// run waits its turn rather than colliding with an in-progress run. The first
-// run of a day builds the digest; later runs append only newly-found papers
-// (see runReporter / importArchiveDay's append mode).
+// Either setting may list more than one time (comma-separated, e.g.
+// "06:32,20:30"). Each time gets its own setTimeout-to-next-occurrence loop so it
+// stays aligned to the wall clock across drift. A shared guard serializes jobs:
+// a report that fires while another job runs is skipped (so arXiv fetches don't
+// pile up), while a push waits out an in-progress report (so a push time close
+// after a report time still delivers, just a bit later).
+//
+// Reporting: the first run of a day builds the digest; later runs append only
+// newly-found papers. Pushing: when REPORTER_PUSH_TIME is set, report runs only
+// store the digest and notifications fire at push time instead (see reporter.js).
 
-import { runReporter } from './reporter.js';
+import { runReporter, runPush } from './reporter.js';
+import { parseDailyTimes } from './schedule-times.js';
 
 const log = (...parts) => console.log('[reporter:scheduler]', ...parts);
 
 const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-// Parse "HH:MM" -> minutes since midnight, or null if malformed.
-function parseDailyTime(value) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(String(value).trim());
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (h > 23 || min > 59) return null;
-  return h * 60 + min;
-}
-
-// Parse the (possibly comma-separated) REPORTER_DAILY_TIME into a sorted, de-
-// duplicated list of { label, minutes }. Malformed entries are dropped with a
-// warning so one bad value doesn't disable the whole schedule.
-function parseDailyTimes(value) {
-  const parts = String(value).split(',').map((p) => p.trim()).filter(Boolean);
-  const seen = new Set();
-  const times = [];
-  for (const part of parts) {
-    const minutes = parseDailyTime(part);
-    if (minutes == null) {
-      log(`REPORTER_DAILY_TIME 含非法时间 ("${part}"), 已忽略`);
-      continue;
-    }
-    if (seen.has(minutes)) continue;
-    seen.add(minutes);
-    times.push({ label: part, minutes });
-  }
-  return times.sort((a, b) => a.minutes - b.minutes);
-}
 
 // Milliseconds from now until the next Shanghai-local HH:MM.
 function msUntilNext(minutesOfDay) {
@@ -56,8 +31,9 @@ function msUntilNext(minutesOfDay) {
 }
 
 /**
- * Arm the daily reporter timer(s). Returns a stop() function (clears all pending
- * timers) for tests/shutdown, or a no-op when disabled or no valid time is set.
+ * Arm the daily reporter (and optional push) timers. Returns a stop() function
+ * (clears all pending timers) for tests/shutdown, or a no-op when disabled or no
+ * valid report time is set.
  */
 export function startScheduler(cfg) {
   if (!cfg.enabled) {
@@ -65,51 +41,83 @@ export function startScheduler(cfg) {
     return () => {};
   }
 
-  const times = parseDailyTimes(cfg.dailyTime);
-  if (!times.length) {
+  const reportTimes = parseDailyTimes(cfg.dailyTime, 'REPORTER_DAILY_TIME');
+  if (!reportTimes.length) {
     log(`REPORTER_DAILY_TIME 无有效时间 ("${cfg.dailyTime}"), 不安排定时任务`);
     return () => {};
   }
+  // Parsed once: empty when REPORTER_PUSH_TIME is unset or has no valid time, in
+  // which case push runs inline at report time (see reporter.js / pushConfigured).
+  const pushTimes = parseDailyTimes(cfg.pushTime, 'REPORTER_PUSH_TIME');
 
-  // One running-guard shared across every time so two fires never overlap.
+  // Shared guard so report and push jobs never overlap. `running` is the busy
+  // flag; `runningPromise` resolves when the current job finishes, letting a
+  // waiting job (push) queue behind it.
   let running = false;
+  let runningPromise = Promise.resolve();
   const timers = new Set();
 
-  const runOnce = async (label) => {
+  // Run `fn` under the guard. mode 'skip' bails if busy (reports); mode 'wait'
+  // queues behind the in-progress job (push).
+  const runGuarded = async (mode, label, fn) => {
     if (running) {
-      log(`上一次运行尚未结束, 跳过本次 (${label})`);
-      return;
+      if (mode === 'skip') {
+        log(`上一次运行尚未结束, 跳过本次 (${label})`);
+        return;
+      }
+      log(`有任务进行中, 排队等待 (${label})`);
+      await runningPromise.catch(() => {});
+      return runGuarded(mode, label, fn); // re-check: another waiter may have won
     }
     running = true;
+    let done;
+    runningPromise = new Promise((resolve) => { done = resolve; });
     try {
-      const res = await runReporter(cfg);
-      log(
-        `定时运行完成 (${label}): ${res.date}, ${res.scopes.length} 个范围` +
-          (res.append ? ' [追加]' : '')
-      );
-    } catch (err) {
-      log(`定时运行失败 (${label}):`, err?.stack || err?.message || err);
+      await fn();
     } finally {
       running = false;
+      done();
     }
   };
 
+  const runReport = (label) =>
+    runGuarded('skip', label, async () => {
+      const res = await runReporter(cfg);
+      log(
+        `定时报告完成 (${label}): ${res.date}, ${res.scopes.length} 个范围` +
+          (res.append ? ' [追加]' : '')
+      );
+    }).catch((err) => log(`定时报告失败 (${label}):`, err?.stack || err?.message || err));
+
+  const runPushJob = (label) =>
+    runGuarded('wait', label, async () => {
+      const res = await runPush(cfg);
+      log(`定时推送完成 (${label}): ${res.date ?? '无日报'}`);
+    }).catch((err) => log(`定时推送失败 (${label}):`, err?.stack || err?.message || err));
+
   // Each time re-arms itself after firing, staying aligned to the wall clock.
-  const arm = ({ label, minutes }) => {
+  const arm = (kind, { label, minutes }, job) => {
     const wait = msUntilNext(minutes);
     const fireAt = new Date(Date.now() + wait);
-    log(`下次运行约在 ${fireAt.toISOString()} (${label} Asia/Shanghai)`);
+    log(`下次${kind}约在 ${fireAt.toISOString()} (${label} Asia/Shanghai)`);
     const timer = setTimeout(async () => {
       timers.delete(timer);
-      await runOnce(label);
-      arm({ label, minutes });
+      await job(label);
+      arm(kind, { label, minutes }, job);
     }, wait);
     if (typeof timer.unref === 'function') timer.unref();
     timers.add(timer);
   };
 
-  log(`已安排 ${times.length} 个每日运行时间: ${times.map((t) => t.label).join(', ')}`);
-  for (const time of times) arm(time);
+  log(`已安排 ${reportTimes.length} 个报告时间: ${reportTimes.map((t) => t.label).join(', ')}`);
+  for (const time of reportTimes) arm('报告', time, runReport);
+
+  if (pushTimes.length) {
+    log(`已安排 ${pushTimes.length} 个推送时间: ${pushTimes.map((t) => t.label).join(', ')}`);
+    for (const time of pushTimes) arm('推送', time, runPushJob);
+  } else {
+    log('未配置 REPORTER_PUSH_TIME, 推送在报告完成后内联进行');
+  }
 
   return () => {
     for (const timer of timers) clearTimeout(timer);

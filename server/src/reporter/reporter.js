@@ -9,7 +9,13 @@ import { curate } from './curate.js';
 import { scopeWithDefaults } from './config.js';
 import { pushToUsers } from './push.js';
 import { scopesWithSubscribers } from '../subscriptions/queries.js';
-import { importArchiveDay, recentArchivedExternalIds, dayHasDigest } from '../digest/queries.js';
+import {
+  importArchiveDay,
+  recentArchivedExternalIds,
+  dayHasDigest,
+  latestDigestForPush,
+} from '../digest/queries.js';
+import { parseDailyTimes } from './schedule-times.js';
 
 const log = (...parts) => console.log('[reporter]', ...parts);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -172,7 +178,13 @@ export async function runReporter(cfg) {
   // scopes each follows. Best-effort — never blocks the stored digest. On an
   // append run that added nothing new, skip push so users aren't pinged with an
   // empty "今日没有新论文" notice for a day they already received.
-  if (append && res.links === 0) {
+  //
+  // When a separate push time is configured (REPORTER_PUSH_TIME), report runs
+  // only generate/store the digest — all notifications go out at push time, so
+  // we skip the inline push entirely here.
+  if (pushConfigured(cfg)) {
+    log('已配置独立推送时间 (REPORTER_PUSH_TIME), 报告阶段不推送');
+  } else if (append && res.links === 0) {
     log('追加模式未发现新论文, 跳过推送');
   } else {
     try {
@@ -183,4 +195,31 @@ export async function runReporter(cfg) {
   }
 
   return { date: dateStr, scopes: summary, append };
+}
+
+/** True when a dedicated push schedule is set, decoupling push from reporting. */
+export function pushConfigured(cfg) {
+  return parseDailyTimes(cfg.pushTime, 'REPORTER_PUSH_TIME').length > 0;
+}
+
+/**
+ * Push the latest stored digest to every push-enabled user. Used by the
+ * scheduler when REPORTER_PUSH_TIME is set, so notifications fire on their own
+ * schedule rather than inline at report time. Reads what was already generated
+ * (latestDigestForPush) instead of re-curating. Best-effort; returns a summary.
+ */
+export async function runPush(cfg) {
+  const { date, scopeResults } = latestDigestForPush();
+  if (!date) {
+    log('推送: 暂无任何日报, 跳过');
+    return { date: null, pushed: false };
+  }
+  const total = scopeResults.reduce((n, r) => n + r.items.length, 0);
+  log(`推送最新日报 ${date}: ${scopeResults.length} 个范围, ${total} 篇`);
+  try {
+    await pushToUsers(cfg, scopeResults, date);
+  } catch (err) {
+    log('推送阶段异常 (忽略):', err?.message || err);
+  }
+  return { date, pushed: true };
 }

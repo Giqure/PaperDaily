@@ -34,6 +34,10 @@ export function reporterConfig() {
     // comma-separated ("06:32,20:30") to report more than once a day. The first
     // run of a day builds the digest; later runs append only newly-found papers.
     dailyTime: str('REPORTER_DAILY_TIME', '06:32'),
+    // Optional separate push time(s), same "HH:MM"[,...] format. When set, report
+    // runs only generate/store the digest and all notifications fire at these
+    // times (delivering the latest digest day). Unset = push inline at report time.
+    pushTime: str('REPORTER_PUSH_TIME', ''),
 
     // OpenAI-compatible curation endpoint. Without a key the reporter falls
     // back to keyword tagging (no AI summaries), matching the Python behavior.
