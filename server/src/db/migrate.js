@@ -638,6 +638,173 @@ const migrations = [
       ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1;
     `);
   },
+
+  // 0015 — bilingual scope names. `name` stays the canonical key (it's the
+  // join/grouping/dedup key across daily_scopes, the feed, and the reporter), so
+  // it's left untouched. Two optional display labels are added: name_zh and
+  // name_en. The client shows the active locale's label and falls back to the
+  // canonical name when its label is missing. Existing names are Chinese, so
+  // name_zh is backfilled from name; the seeded (unauthored) scopes also get a
+  // hardcoded English label.
+  (d) => {
+    d.exec(`
+      ALTER TABLE scopes ADD COLUMN name_en TEXT;
+      ALTER TABLE scopes ADD COLUMN name_zh TEXT;
+    `);
+    // Existing scope names are Chinese — treat them as the zh display label.
+    d.exec('UPDATE scopes SET name_zh = name WHERE name_zh IS NULL;');
+
+    // English labels for the seeded scopes (created_by IS NULL), matched by the
+    // canonical Chinese name. Keep in sync with the seeds in migrations 0008/0012.
+    const enLabels = {
+      具身智能综合: 'Embodied AI (general)',
+      VLA与机器人基础模型: 'VLA & robot foundation models',
+      遥操作与示教: 'Teleoperation & demonstration',
+      灵巧手与操作: 'Dexterous hands & manipulation',
+      世界模型与规划: 'World models & planning',
+      模仿学习与Sim2Real: 'Imitation learning & Sim2Real',
+      机器人数据集与评测: 'Robot datasets & benchmarks',
+      腿足机器人RL运动控制: 'Legged-robot RL locomotion control',
+      四足机器人Sim2Real与策略迁移: 'Quadruped Sim2Real & policy transfer',
+      腿足运动模仿与运动先验: 'Legged motion imitation & priors',
+      复杂地形与敏捷腿足运动: 'Complex terrain & agile legged locomotion',
+      感知驱动腿足运动控制: 'Perception-driven legged locomotion',
+    };
+    const setEn = d.prepare(
+      'UPDATE scopes SET name_en = @en WHERE name = @zh AND created_by IS NULL'
+    );
+    for (const [zh, en] of Object.entries(enLabels)) setEn.run({ en, zh });
+  },
+
+  // 0016 — seed VLM / MLLM / VLN scopes. Like 0012, editing an earlier seed only
+  // affects fresh databases, so these are added idempotently here. The bilingual
+  // columns (added in 0015) are populated inline: name stays the canonical key
+  // (== name_zh), name_en is the English display label.
+  (d) => {
+    const seed = [
+      {
+        name: '视觉语言模型',
+        nameEn: 'Vision-language models (VLM)',
+        queries: [
+          'all:vision-language AND all:model',
+          'all:vision AND all:language AND all:pretraining',
+          'all:CLIP AND all:vision-language',
+          'all:image-text AND all:representation AND all:learning',
+        ],
+        interests:
+          'vision-language model, VLM, vision-language pretraining, image-text alignment, contrastive learning, CLIP, visual representation, cross-modal retrieval, zero-shot classification, open-vocabulary, visual grounding, captioning, visual question answering, VQA',
+      },
+      {
+        name: '多模态大模型',
+        nameEn: 'Multimodal LLMs (MLLM)',
+        queries: [
+          'all:multimodal AND all:large AND all:language AND all:model',
+          'all:MLLM',
+          'all:multimodal AND all:LLM',
+          'all:visual AND all:instruction AND all:tuning',
+        ],
+        interests:
+          'multimodal large language model, MLLM, multimodal LLM, visual instruction tuning, vision-language model, image understanding, video understanding, document understanding, visual reasoning, multimodal reasoning, multimodal alignment, visual question answering, VQA, multimodal benchmark',
+      },
+      {
+        name: '视觉语言导航',
+        nameEn: 'Vision-and-language navigation (VLN)',
+        queries: [
+          'all:vision-and-language AND all:navigation',
+          'all:vision-language AND all:navigation',
+          'all:VLN AND all:navigation',
+          'all:embodied AND all:navigation AND all:instruction',
+        ],
+        interests:
+          'vision-and-language navigation, VLN, vision-language navigation, embodied navigation, instruction following, language-guided navigation, navigation policy, embodied AI, object-goal navigation, room-to-room, R2R, continuous environments, sim-to-real navigation',
+      },
+    ];
+    const insScope = d.prepare(
+      `INSERT OR IGNORE INTO scopes (name, name_en, name_zh, queries, interests)
+         VALUES (@name, @nameEn, @nameZh, @queries, @interests)`
+    );
+    for (const sc of seed) {
+      insScope.run({
+        name: sc.name,
+        nameEn: sc.nameEn,
+        nameZh: sc.name,
+        queries: JSON.stringify(sc.queries),
+        interests: sc.interests,
+      });
+    }
+  },
+
+  // 0017 — seed the two remaining scopes from the upstream CLI's
+  // config.example.json (Ego第一视角具身, VTLA视觉触觉语言动作). These were
+  // imported by hand into some deployments without an English label, so this
+  // migration both inserts them for fresh databases (INSERT OR IGNORE) and
+  // backfills name_en on any existing seeded row that's still missing it.
+  (d) => {
+    const seed = [
+      {
+        name: 'Ego第一视角具身',
+        nameEn: 'Egocentric / first-person embodied AI',
+        queries: [
+          'all:egocentric AND all:embodied',
+          'all:ego AND all:centric AND all:robot',
+          'all:first AND all:person AND all:robot',
+          'all:Ego4D AND all:robot',
+        ],
+        interests:
+          'egocentric perception, first-person video, embodied agents, Ego4D',
+      },
+      {
+        name: 'VTLA视觉触觉语言动作',
+        nameEn: 'VTLA (vision-tactile-language-action)',
+        queries: [
+          'all:vision AND all:tactile AND all:language AND all:action',
+          'all:visuo AND all:tactile AND all:robot',
+          'all:tactile AND all:language AND all:robot',
+          'all:tactile AND all:policy AND all:robot',
+        ],
+        interests:
+          'VTLA, tactile language action, visuo-tactile policy, multimodal robot learning',
+      },
+    ];
+    const insScope = d.prepare(
+      `INSERT OR IGNORE INTO scopes (name, name_en, name_zh, queries, interests)
+         VALUES (@name, @nameEn, @nameZh, @queries, @interests)`
+    );
+    // Backfill English on rows that were inserted by hand without it.
+    const setEn = d.prepare(
+      'UPDATE scopes SET name_en = @nameEn WHERE name = @name AND created_by IS NULL AND name_en IS NULL'
+    );
+    for (const sc of seed) {
+      insScope.run({
+        name: sc.name,
+        nameEn: sc.nameEn,
+        nameZh: sc.name,
+        queries: JSON.stringify(sc.queries),
+        interests: sc.interests,
+      });
+      setEn.run({ name: sc.name, nameEn: sc.nameEn });
+    }
+  },
+
+  // 0018 — backfill English labels for three seeded scopes that were imported by
+  // hand into existing deployments and never had an English label. They aren't
+  // part of any seed (no canonical queries/interests exist for them), so this is
+  // a label-only backfill: on a fresh database these rows don't exist and the
+  // UPDATEs are no-ops, which is correct. Kept separate from 0017 because that
+  // migration has already run on existing DBs — the runner is forward-only.
+  (d) => {
+    const backfillEn = {
+      导航与人形机器人: 'Navigation & humanoid robots',
+      '3D场景与具身感知': '3D scenes & embodied perception',
+      人形机器人控制: 'Humanoid robot control',
+    };
+    const setEn = d.prepare(
+      'UPDATE scopes SET name_en = @nameEn WHERE name = @name AND created_by IS NULL AND name_en IS NULL'
+    );
+    for (const [name, nameEn] of Object.entries(backfillEn)) {
+      setEn.run({ name, nameEn });
+    }
+  },
 ];
 
 import { randomUUID } from 'node:crypto';

@@ -11,6 +11,9 @@ const props = defineProps({
   // Show the paper's scope name(s) as badges. Used in the "All papers" tab,
   // where cards are grouped by date rather than by scope.
   showScopes: { type: Boolean, default: false },
+  // Resolve a canonical scope name to its localized display label. Defaults to
+  // identity so the canonical name shows when no resolver is provided.
+  labelScope: { type: Function, default: (name) => name },
 });
 
 const emit = defineEmits(['save', 'dismiss', 'unsave']);
@@ -111,7 +114,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         :key="name"
         class="tag scope-tag"
       >
-        {{ name }}
+        {{ labelScope(name) }}
       </span>
       <button
         v-if="hasBothSummaries"

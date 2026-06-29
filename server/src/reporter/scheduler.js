@@ -1,8 +1,13 @@
-// Daily scheduler: fire runReporter() once per day at REPORTER_DAILY_TIME,
-// interpreted in Asia/Shanghai (fixed UTC+8). No-op unless REPORTER_ENABLED.
+// Daily scheduler: fire runReporter() at each REPORTER_DAILY_TIME, interpreted
+// in Asia/Shanghai (fixed UTC+8). No-op unless REPORTER_ENABLED.
 //
-// Uses a setTimeout-to-next-occurrence loop rather than a fixed 24h interval so
-// it stays aligned to the wall clock across the run's own drift.
+// REPORTER_DAILY_TIME may list more than one time (comma-separated, e.g.
+// "06:32,20:30") to report multiple times a day. Each time gets its own
+// setTimeout-to-next-occurrence loop so they stay aligned to the wall clock
+// across drift. A shared running-guard serializes overlapping fires: the later
+// run waits its turn rather than colliding with an in-progress run. The first
+// run of a day builds the digest; later runs append only newly-found papers
+// (see runReporter / importArchiveDay's append mode).
 
 import { runReporter } from './reporter.js';
 
@@ -21,6 +26,26 @@ function parseDailyTime(value) {
   return h * 60 + min;
 }
 
+// Parse the (possibly comma-separated) REPORTER_DAILY_TIME into a sorted, de-
+// duplicated list of { label, minutes }. Malformed entries are dropped with a
+// warning so one bad value doesn't disable the whole schedule.
+function parseDailyTimes(value) {
+  const parts = String(value).split(',').map((p) => p.trim()).filter(Boolean);
+  const seen = new Set();
+  const times = [];
+  for (const part of parts) {
+    const minutes = parseDailyTime(part);
+    if (minutes == null) {
+      log(`REPORTER_DAILY_TIME 含非法时间 ("${part}"), 已忽略`);
+      continue;
+    }
+    if (seen.has(minutes)) continue;
+    seen.add(minutes);
+    times.push({ label: part, minutes });
+  }
+  return times.sort((a, b) => a.minutes - b.minutes);
+}
+
 // Milliseconds from now until the next Shanghai-local HH:MM.
 function msUntilNext(minutesOfDay) {
   const nowShanghai = Date.now() + SHANGHAI_OFFSET_MS;
@@ -31,8 +56,8 @@ function msUntilNext(minutesOfDay) {
 }
 
 /**
- * Arm the daily reporter timer. Returns a stop() function (clears the pending
- * timer) for tests/shutdown, or a no-op when disabled.
+ * Arm the daily reporter timer(s). Returns a stop() function (clears all pending
+ * timers) for tests/shutdown, or a no-op when disabled or no valid time is set.
  */
 export function startScheduler(cfg) {
   if (!cfg.enabled) {
@@ -40,44 +65,54 @@ export function startScheduler(cfg) {
     return () => {};
   }
 
-  const minutesOfDay = parseDailyTime(cfg.dailyTime);
-  if (minutesOfDay == null) {
-    log(`REPORTER_DAILY_TIME 非法 ("${cfg.dailyTime}"), 不安排定时任务`);
+  const times = parseDailyTimes(cfg.dailyTime);
+  if (!times.length) {
+    log(`REPORTER_DAILY_TIME 无有效时间 ("${cfg.dailyTime}"), 不安排定时任务`);
     return () => {};
   }
 
-  let timer = null;
+  // One running-guard shared across every time so two fires never overlap.
   let running = false;
+  const timers = new Set();
 
-  const tick = async () => {
-    // Guard against an overlong run colliding with the next fire.
+  const runOnce = async (label) => {
     if (running) {
-      log('上一次运行尚未结束, 跳过本次');
-    } else {
-      running = true;
-      try {
-        const res = await runReporter(cfg);
-        log(`定时运行完成: ${res.date}, ${res.scopes.length} 个范围`);
-      } catch (err) {
-        log('定时运行失败:', err?.stack || err?.message || err);
-      } finally {
-        running = false;
-      }
+      log(`上一次运行尚未结束, 跳过本次 (${label})`);
+      return;
     }
-    schedule();
+    running = true;
+    try {
+      const res = await runReporter(cfg);
+      log(
+        `定时运行完成 (${label}): ${res.date}, ${res.scopes.length} 个范围` +
+          (res.append ? ' [追加]' : '')
+      );
+    } catch (err) {
+      log(`定时运行失败 (${label}):`, err?.stack || err?.message || err);
+    } finally {
+      running = false;
+    }
   };
 
-  const schedule = () => {
-    const wait = msUntilNext(minutesOfDay);
+  // Each time re-arms itself after firing, staying aligned to the wall clock.
+  const arm = ({ label, minutes }) => {
+    const wait = msUntilNext(minutes);
     const fireAt = new Date(Date.now() + wait);
-    log(`下次运行约在 ${fireAt.toISOString()} (${cfg.dailyTime} Asia/Shanghai)`);
-    timer = setTimeout(tick, wait);
-    // Don't keep the event loop alive solely for the reporter.
+    log(`下次运行约在 ${fireAt.toISOString()} (${label} Asia/Shanghai)`);
+    const timer = setTimeout(async () => {
+      timers.delete(timer);
+      await runOnce(label);
+      arm({ label, minutes });
+    }, wait);
     if (typeof timer.unref === 'function') timer.unref();
+    timers.add(timer);
   };
 
-  schedule();
+  log(`已安排 ${times.length} 个每日运行时间: ${times.map((t) => t.label).join(', ')}`);
+  for (const time of times) arm(time);
+
   return () => {
-    if (timer) clearTimeout(timer);
+    for (const timer of timers) clearTimeout(timer);
+    timers.clear();
   };
 }

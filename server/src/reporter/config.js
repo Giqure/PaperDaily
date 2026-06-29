@@ -30,7 +30,9 @@ export function reporterConfig() {
     // Scheduling. Disabled by default — the server only arms the daily timer
     // when explicitly enabled. The manual CLI (run-reporter.js) ignores this.
     enabled: bool('REPORTER_ENABLED', false),
-    // Local run time, Asia/Shanghai (UTC+8, no DST), "HH:MM".
+    // Local run time(s), Asia/Shanghai (UTC+8, no DST). One "HH:MM", or several
+    // comma-separated ("06:32,20:30") to report more than once a day. The first
+    // run of a day builds the digest; later runs append only newly-found papers.
     dailyTime: str('REPORTER_DAILY_TIME', '06:32'),
 
     // OpenAI-compatible curation endpoint. Without a key the reporter falls

@@ -2,8 +2,9 @@
 import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { subscriptionsApi } from '../api.js';
+import { scopeLabel } from '../scopeLabel.js';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 // Minimum scope-name length, mirrored by the server (subscriptions/routes.js).
 // Names shorter than this are too vague to query or auto-fill on.
@@ -35,9 +36,16 @@ const suggesting = ref(false);
 // default — the sidebar reads as a clean scope nav until you choose to edit.
 const editing = ref(false);
 
-// Create-scope form.
+// Create-scope form. The user types in one language; the AI fills both labels.
+// `name` is the canonical key (what they typed / the AI's zh name); nameEn/nameZh
+// are the localized display labels.
 const showForm = ref(false);
-const form = ref({ name: '', queries: '', interests: '' });
+const form = ref({ name: '', nameEn: '', nameZh: '', queries: '', interests: '' });
+
+// Localized display label for a scope, for the active locale.
+function label(scope) {
+  return scopeLabel(scope, locale.value);
+}
 
 // Mirror the server's normalizeName (subscriptions/routes.js): trim and collapse
 // internal whitespace. Padding like "1    1" must not game the length check —
@@ -101,7 +109,8 @@ async function follow(scopeId) {
   }
 }
 
-// Ask the AI to fill the queries + interests fields from the entered name.
+// Ask the AI to assess + rewrite the name (both languages) and fill the
+// queries + interests fields.
 async function suggestFields() {
   const name = normalizedName.value;
   if (name.length < MIN_NAME_LEN) {
@@ -111,10 +120,17 @@ async function suggestFields() {
   error.value = '';
   suggesting.value = true;
   try {
-    const { name: refined, queries, interests } =
+    const { nameZh, nameEn, queries, interests } =
       await subscriptionsApi.suggestScope(name);
-    // The AI may rewrite the name into a better-scoped one — write it back.
-    if (refined) form.value.name = refined;
+    // The AI rewrites the name into refined bilingual labels — write both back.
+    // The canonical name follows the locale's label so the stored key matches
+    // what the user is reading.
+    if (nameZh) form.value.nameZh = nameZh;
+    if (nameEn) form.value.nameEn = nameEn;
+    // Mirror scopeLabel: only "all English" reads the English label; every other
+    // mode (zh-CN, en) shows the Chinese one. Keep the canonical name in step.
+    const preferred = locale.value === 'en-all' ? nameEn : nameZh;
+    if (preferred) form.value.name = preferred;
     // queries arrives as an array; the textarea is one-per-line.
     form.value.queries = queries.join('\n');
     form.value.interests = interests || '';
@@ -127,6 +143,8 @@ async function suggestFields() {
 
 async function createScope() {
   const name = form.value.name.trim();
+  const nameEn = form.value.nameEn.trim();
+  const nameZh = form.value.nameZh.trim();
   // One query per line.
   const queries = form.value.queries
     .split('\n')
@@ -141,10 +159,12 @@ async function createScope() {
   try {
     await subscriptionsApi.createScope({
       name,
+      nameEn,
+      nameZh,
       queries,
       interests: form.value.interests.trim(),
     });
-    form.value = { name: '', queries: '', interests: '' };
+    form.value = { name: '', nameEn: '', nameZh: '', queries: '', interests: '' };
     showForm.value = false;
     await load();
     emit('changed');
@@ -201,7 +221,7 @@ defineExpose({ reload: load });
             :title="sub.scope.interests"
             @click="navEnabled && emit('navigate', sub.scope.name)"
           >
-            <span class="scope-nav-name">{{ sub.scope.name }}</span>
+            <span class="scope-nav-name">{{ label(sub.scope) }}</span>
           </button>
           <button
             v-if="editing"
@@ -236,7 +256,7 @@ defineExpose({ reload: load });
               :title="sc.interests"
               @click="follow(sc.id)"
             >
-              + {{ sc.name }}
+              + {{ label(sc) }}
             </button>
           </div>
         </div>
@@ -287,6 +307,26 @@ defineExpose({ reload: load });
                 :minlength="MIN_NAME_LEN"
                 maxlength="80"
                 :placeholder="t('scopes.namePlaceholder')"
+                :disabled="submitting"
+              />
+            </label>
+            <label>
+              {{ t('scopes.nameEn') }} <small>{{ t('scopes.nameLocaleHint') }}</small>
+              <input
+                v-model="form.nameEn"
+                type="text"
+                maxlength="80"
+                :placeholder="t('scopes.nameEnPlaceholder')"
+                :disabled="submitting"
+              />
+            </label>
+            <label>
+              {{ t('scopes.nameZh') }} <small>{{ t('scopes.nameLocaleHint') }}</small>
+              <input
+                v-model="form.nameZh"
+                type="text"
+                maxlength="80"
+                :placeholder="t('scopes.nameZhPlaceholder')"
                 :disabled="submitting"
               />
             </label>

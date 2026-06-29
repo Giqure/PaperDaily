@@ -7,7 +7,8 @@ import { papersApi } from '../api.js';
 import KeywordManager from '../components/KeywordManager.vue';
 import PaperCard from '../components/PaperCard.vue';
 import PushSettings from '../components/PushSettings.vue';
-import LanguageSwitcher from '../components/LanguageSwitcher.vue';
+import { scopeLabel } from '../scopeLabel.js';
+import { intlLocale } from '../i18n/index.js';
 
 const { t, locale } = useI18n();
 
@@ -32,10 +33,13 @@ let observer = null;
 // listed once, under the first followed scope it belongs to, so multi-scope
 // papers don't duplicate across sections. Papers that match none of the named
 // scopes (shouldn't normally happen) fall into a trailing "Other" group.
+// dailyScopes holds scope refs ({ name, nameEn, nameZh }); `name` is the
+// canonical grouping/scrollspy key, matched against each paper's scope names.
 const dailyGroups = computed(() => {
   const groups = [];
   const placed = new Set();
-  for (const name of dailyScopes.value) {
+  for (const ref of dailyScopes.value) {
+    const name = ref.name;
     const papers = daily.value.filter(
       (p) => !placed.has(p.id) && (p.scopes || []).includes(name)
     );
@@ -45,6 +49,14 @@ const dailyGroups = computed(() => {
   const rest = daily.value.filter((p) => !placed.has(p.id));
   if (rest.length) groups.push({ name: OTHER_GROUP, papers: rest });
   return groups;
+});
+
+// Canonical scope name -> ref, so a feed group (keyed by canonical name) can
+// resolve its localized display label.
+const scopeRefByName = computed(() => {
+  const map = new Map();
+  for (const ref of dailyScopes.value) map.set(ref.name, ref);
+  return map;
 });
 
 // Scope names that actually have papers today — used to dim empty nav entries.
@@ -73,7 +85,7 @@ function formatDate(date) {
   if (!date || date === 'Undated') return t('space.undated');
   const d = new Date(`${date}T00:00:00`);
   if (Number.isNaN(d.getTime())) return date;
-  return d.toLocaleDateString(locale.value, {
+  return d.toLocaleDateString(intlLocale(locale.value), {
     weekday: 'short',
     year: 'numeric',
     month: 'short',
@@ -85,7 +97,16 @@ function formatDate(date) {
 // fall into a trailing group keyed by this sentinel, displayed via i18n.
 const OTHER_GROUP = 'Other';
 function groupLabel(name) {
-  return name === OTHER_GROUP ? t('space.otherGroup') : name;
+  if (name === OTHER_GROUP) return t('space.otherGroup');
+  const ref = scopeRefByName.value.get(name);
+  return ref ? scopeLabel(ref, locale.value) : name;
+}
+
+// Resolve a canonical scope name to its localized badge label (All-papers tab).
+// Falls back to the canonical name for any scope not in the current map.
+function scopeBadgeLabel(name) {
+  const ref = scopeRefByName.value.get(name);
+  return ref ? scopeLabel(ref, locale.value) : name;
 }
 
 async function loadDaily() {
@@ -233,7 +254,6 @@ onBeforeUnmount(() => observer?.disconnect());
         <p class="who">{{ auth.state.user.name || auth.state.user.email }}</p>
       </div>
       <div class="space-head-actions">
-        <LanguageSwitcher />
         <button class="ghost" :disabled="loggingOut" @click="logout">
           {{ loggingOut ? t('space.loggingOut') : t('space.logOut') }}
         </button>
@@ -315,6 +335,7 @@ onBeforeUnmount(() => observer?.disconnect());
                     :paper="p"
                     context="daily"
                     :show-scopes="true"
+                    :label-scope="scopeBadgeLabel"
                     @save="save(p)"
                     @dismiss="dismiss(p)"
                   />

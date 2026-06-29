@@ -29,7 +29,7 @@ router.use(requireAuth);
 router.get('/daily', (req, res) => {
   const limit = clampLimit(req.query.limit, DEFAULT_DAILY_LIMIT, MAX_DAILY_LIMIT);
   const { date, papers } = dailyForUser(req.user.id, limit);
-  const scopes = listSubscriptions(req.user.id).map((sub) => sub.scope.name);
+  const scopes = listSubscriptions(req.user.id).map((sub) => scopeRef(sub.scope));
   res.json({ papers, scopes, date });
 });
 
@@ -46,7 +46,7 @@ router.get('/saved', (req, res) => {
 router.get('/all', (req, res) => {
   const limit = clampLimit(req.query.limit, DEFAULT_ALL_LIMIT, MAX_ALL_LIMIT);
   const papers = allForUser(req.user.id, limit);
-  const scopes = listSubscriptions(req.user.id).map((sub) => sub.scope.name);
+  const scopes = listSubscriptions(req.user.id).map((sub) => scopeRef(sub.scope));
   res.json({ papers, scopes });
 });
 
@@ -84,6 +84,14 @@ function clampLimit(raw, fallback, max) {
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1) return fallback;
   return Math.min(n, max);
+}
+
+// A scope reference for the feed: the canonical `name` (the client's grouping/
+// scrollspy key, matched against each paper's scope names) plus the localized
+// display labels. The client picks the label for the active locale and falls
+// back to `name`.
+function scopeRef(scope) {
+  return { name: scope.name, nameEn: scope.nameEn ?? null, nameZh: scope.nameZh ?? null };
 }
 
 export default router;

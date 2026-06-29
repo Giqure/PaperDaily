@@ -9,7 +9,7 @@ import { curate } from './curate.js';
 import { scopeWithDefaults } from './config.js';
 import { pushToUsers } from './push.js';
 import { scopesWithSubscribers } from '../subscriptions/queries.js';
-import { importArchiveDay, recentArchivedExternalIds } from '../digest/queries.js';
+import { importArchiveDay, recentArchivedExternalIds, dayHasDigest } from '../digest/queries.js';
 
 const log = (...parts) => console.log('[reporter]', ...parts);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -106,7 +106,15 @@ export async function runReporter(cfg) {
     return { date: dateStr, scopes: [] };
   }
 
-  log(`开始生成 ${dateStr} 日报, 共 ${catalog.length} 个被订阅范围`);
+  // A digest already exists for today => this is a later run of the day (the
+  // app can report more than once daily). Append new papers to today's digest
+  // instead of rebuilding it. Dedup already hides papers surfaced earlier today,
+  // so the curated results here are exactly what's new since the last run.
+  const append = dayHasDigest(dateStr);
+  log(
+    `开始生成 ${dateStr} 日报, 共 ${catalog.length} 个被订阅范围` +
+      (append ? ' (追加模式: 已有今日日报, 仅补充新论文)' : '')
+  );
 
   // Phase 1 — gather candidates. Serial on purpose: arXiv fetches share a global
   // min-interval pacing gate, so concurrency here would just violate politeness.
@@ -137,14 +145,22 @@ export async function runReporter(cfg) {
   }));
 
   const day = { date: dateStr, scopes: scopeResults };
-  const res = importArchiveDay(day);
-  log(`已写入数据库 ${res.date}: ${res.scopes} 个范围, ${res.papers} 篇论文, ${res.links} 条关联`);
+  const res = importArchiveDay(day, { append });
+  log(
+    `已写入数据库 ${res.date}: ${res.scopes} 个范围, ${res.papers} 篇论文, ${res.links} 条关联` +
+      (append ? ` (追加模式新增 ${res.links} 条)` : '')
+  );
 
   if (cfg.archiveDir) {
     try {
       const dir = path.resolve(cfg.archiveDir);
       fs.mkdirSync(dir, { recursive: true });
-      const file = path.join(dir, `${dateStr}.json`);
+      // A later run the same day writes a distinct file so the morning archive
+      // isn't clobbered; the first run keeps the plain YYYY-MM-DD.json name.
+      const stamp = append
+        ? `${dateStr}-${new Date().toISOString().slice(11, 16).replace(':', '')}`
+        : dateStr;
+      const file = path.join(dir, `${stamp}.json`);
       fs.writeFileSync(file, JSON.stringify(day, null, 2), 'utf8');
       log('已存档 JSON:', file);
     } catch (err) {
@@ -153,12 +169,18 @@ export async function runReporter(cfg) {
   }
 
   // Fan the digest out to every push-enabled user (Bark / email), scoped to the
-  // scopes each follows. Best-effort — never blocks the stored digest.
-  try {
-    await pushToUsers(cfg, scopeResults, dateStr);
-  } catch (err) {
-    log('推送阶段异常 (忽略):', err?.message || err);
+  // scopes each follows. Best-effort — never blocks the stored digest. On an
+  // append run that added nothing new, skip push so users aren't pinged with an
+  // empty "今日没有新论文" notice for a day they already received.
+  if (append && res.links === 0) {
+    log('追加模式未发现新论文, 跳过推送');
+  } else {
+    try {
+      await pushToUsers(cfg, scopeResults, dateStr);
+    } catch (err) {
+      log('推送阶段异常 (忽略):', err?.message || err);
+    }
   }
 
-  return { date: dateStr, scopes: summary };
+  return { date: dateStr, scopes: summary, append };
 }

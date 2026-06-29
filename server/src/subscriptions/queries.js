@@ -10,7 +10,8 @@ function s() {
       // client the scope's rule and whether this user authored it.
       listByUser: db.prepare(`
         SELECT sub.id, sub.created_at,
-               sc.id AS scope_id, sc.name, sc.queries, sc.interests,
+               sc.id AS scope_id, sc.name, sc.name_en, sc.name_zh,
+               sc.queries, sc.interests,
                sc.created_by AS author_id
         FROM subscriptions sub
         JOIN scopes sc ON sc.id = sub.scope_id
@@ -22,7 +23,8 @@ function s() {
       ),
       subById: db.prepare(`
         SELECT sub.id, sub.user_id, sub.created_at,
-               sc.id AS scope_id, sc.name, sc.queries, sc.interests,
+               sc.id AS scope_id, sc.name, sc.name_en, sc.name_zh,
+               sc.queries, sc.interests,
                sc.created_by AS author_id
         FROM subscriptions sub
         JOIN scopes sc ON sc.id = sub.scope_id
@@ -43,7 +45,7 @@ function s() {
 
       // Catalog
       scopeById: db.prepare(
-        'SELECT id, name, queries, interests, created_by FROM scopes WHERE id = ?'
+        'SELECT id, name, name_en, name_zh, queries, interests, created_by FROM scopes WHERE id = ?'
       ),
       // A name collision within this user's catalog view: a seeded scope or one
       // they authored. Another user's private scope of the same name is invisible
@@ -55,19 +57,19 @@ function s() {
       // scopes they authored themselves. Another user's authored scope is
       // private and never listed here.
       listCatalog: db.prepare(
-        'SELECT id, name, queries, interests, created_by FROM scopes WHERE created_by IS NULL OR created_by = ? ORDER BY name'
+        'SELECT id, name, name_en, name_zh, queries, interests, created_by FROM scopes WHERE created_by IS NULL OR created_by = ? ORDER BY name'
       ),
       // Catalog scopes that have at least one subscriber — the set the reporter
       // actually collects, so arXiv load tracks real demand and user-authored
       // scopes are picked up automatically.
       scopesWithSubscribers: db.prepare(`
-        SELECT sc.id, sc.name, sc.queries, sc.interests, sc.created_by
+        SELECT sc.id, sc.name, sc.name_en, sc.name_zh, sc.queries, sc.interests, sc.created_by
         FROM scopes sc
         WHERE EXISTS (SELECT 1 FROM subscriptions sub WHERE sub.scope_id = sc.id)
         ORDER BY sc.name
       `),
       insertScope: db.prepare(
-        'INSERT INTO scopes (name, queries, interests, created_by) VALUES (@name, @queries, @interests, @created_by)'
+        'INSERT INTO scopes (name, name_en, name_zh, queries, interests, created_by) VALUES (@name, @name_en, @name_zh, @queries, @interests, @created_by)'
       ),
       deleteScope: db.prepare('DELETE FROM scopes WHERE id = ?'),
       countAuthored: db.prepare(
@@ -97,6 +99,9 @@ function scopeToPublic(row) {
   return {
     id: row.id,
     name: row.name,
+    // Optional localized display labels; fall back to the canonical name.
+    nameEn: row.name_en ?? null,
+    nameZh: row.name_zh ?? null,
     queries: parseQueries(row.queries),
     interests: row.interests ?? '',
     // A scope is "custom" when it has an author; seeded scopes have none.
@@ -114,6 +119,8 @@ function subToPublic(row) {
     scope: scopeToPublic({
       id: row.scope_id,
       name: row.name,
+      name_en: row.name_en,
+      name_zh: row.name_zh,
       queries: row.queries,
       interests: row.interests,
       created_by: row.author_id,
@@ -171,12 +178,14 @@ export function subscribedScopeIds(userId) {
  *                        name is invisible and does not collide — names are
  *                        unique per author, not global.
  */
-export function createScope(userId, { name, queries, interests }) {
+export function createScope(userId, { name, nameEn, nameZh, queries, interests }) {
   const existing = s().visibleScopeByName.get({ name, user_id: userId });
   if (existing) return { duplicateName: true };
   try {
     const info = s().insertScope.run({
       name,
+      name_en: nameEn || null,
+      name_zh: nameZh || null,
       queries: JSON.stringify(queries),
       interests: interests || null,
       created_by: userId,

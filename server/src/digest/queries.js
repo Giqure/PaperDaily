@@ -49,12 +49,32 @@ function s() {
       deleteScopePapers: db.prepare(
         'DELETE FROM scope_papers WHERE daily_scope_id = ?'
       ),
+      // Highest rank already linked under a daily scope, so an append run can
+      // continue numbering after the papers stored earlier today. NULL (-> no
+      // rows yet) is handled by the caller.
+      maxRankForScope: db.prepare(
+        'SELECT MAX(rank) AS maxRank FROM scope_papers WHERE daily_scope_id = ?'
+      ),
       insertScopePaper: db.prepare(`
         INSERT INTO scope_papers
           (daily_scope_id, paper_id, rank, tag, tldr, position, zh_summary, highlights, code)
         VALUES
           (@daily_scope_id, @paper_id, @rank, @tag, @tldr, @position, @zh_summary, @highlights, @code)
       `),
+      // Append-mode variant: a paper already linked to this daily scope (unique
+      // on daily_scope_id+paper_id) is silently skipped instead of erroring.
+      insertScopePaperIgnore: db.prepare(`
+        INSERT OR IGNORE INTO scope_papers
+          (daily_scope_id, paper_id, rank, tag, tldr, position, zh_summary, highlights, code)
+        VALUES
+          (@daily_scope_id, @paper_id, @rank, @tag, @tldr, @position, @zh_summary, @highlights, @code)
+      `),
+
+      // Does a digest already exist for this date? Used to decide whether a run
+      // creates the day fresh or appends new papers to it.
+      dayHasDigest: db.prepare(
+        'SELECT 1 FROM daily_scopes WHERE digest_date = ? LIMIT 1'
+      ),
 
       // External ids of papers already stored under any daily scope on/after a
       // cutoff date — used by the reporter to avoid re-surfacing recent papers.
@@ -104,7 +124,7 @@ export function upsertPaper(paper) {
  * scope name. A name that matches no catalog scope leaves scope_id NULL — the
  * row is archived but unreachable in the feed, and dedup falls back to name.
  */
-export function upsertDailyScope(digestDate, scope) {
+export function upsertDailyScope(digestDate, scope, append = false) {
   const scopeId =
     scope.id != null ? scope.id : s().scopeIdByName.get(scope.name)?.id ?? null;
   const row = {
@@ -128,15 +148,23 @@ export function upsertDailyScope(digestDate, scope) {
       ? s().dailyScopeByDateScope.get(digestDate, scopeId)
       : s().dailyScopeByDateName.get(digestDate, scope.name);
   if (existing) {
-    s().deleteScopePapers.run(existing.id);
+    // Replace mode (default) clears the scope's membership so the caller
+    // re-links from scratch. Append mode keeps existing papers — a later run
+    // the same day adds only what's new (see importArchiveDay's append option).
+    if (!append) s().deleteScopePapers.run(existing.id);
     return existing.id;
   }
   return s().insertDailyScope.run(row).lastInsertRowid;
 }
 
-/** Link a paper into a daily scope with its scope-relative enrichment. */
-export function addScopePaper(dailyScopeId, paperId, rank, enrichment) {
-  s().insertScopePaper.run({
+/**
+ * Link a paper into a daily scope with its scope-relative enrichment. In append
+ * mode a paper already linked to the scope is skipped (INSERT OR IGNORE); the
+ * return value reports whether a new row was actually inserted.
+ */
+export function addScopePaper(dailyScopeId, paperId, rank, enrichment, append = false) {
+  const stmt = append ? s().insertScopePaperIgnore : s().insertScopePaper;
+  const res = stmt.run({
     daily_scope_id: dailyScopeId,
     paper_id: paperId,
     rank,
@@ -147,6 +175,18 @@ export function addScopePaper(dailyScopeId, paperId, rank, enrichment) {
     highlights: enrichment.highlights ? JSON.stringify(enrichment.highlights) : null,
     code: enrichment.code ?? null,
   });
+  return res.changes > 0;
+}
+
+/** True when a digest already exists for `date` ('YYYY-MM-DD'). */
+export function dayHasDigest(date) {
+  return !!s().dayHasDigest.get(date);
+}
+
+/** Highest rank linked under a daily scope, or -1 when it has no papers yet. */
+export function maxRankForDailyScope(dailyScopeId) {
+  const row = s().maxRankForScope.get(dailyScopeId);
+  return row?.maxRank == null ? -1 : row.maxRank;
 }
 
 /**
@@ -162,17 +202,29 @@ export function recentArchivedExternalIds(cutoffDate) {
 /**
  * Import one archive day (the parsed JSON object: { date, scopes: [...] }).
  * Wrapped in a single transaction so a day imports all-or-nothing.
+ *
+ * `append` (default false) controls what happens when the day already has a
+ * digest. In replace mode each scope's membership is cleared and rebuilt — the
+ * behavior manual archive re-imports rely on. In append mode existing papers are
+ * kept, new ranks continue after the highest already stored, and a paper already
+ * linked to the scope is skipped; `links` then counts only the rows newly added.
+ *
  * Returns { date, scopes, papers, links } counts.
  */
-export const importArchiveDay = db.transaction((day) => {
+export const importArchiveDay = db.transaction((day, { append = false } = {}) => {
   let scopeCount = 0;
   let paperCount = 0;
   let linkCount = 0;
   const seenPapers = new Set();
 
   for (const entry of day.scopes ?? []) {
-    const dailyScopeId = upsertDailyScope(day.date, entry.scope);
+    const dailyScopeId = upsertDailyScope(day.date, entry.scope, append);
     scopeCount++;
+
+    // Append mode continues numbering after the papers already stored today;
+    // replace mode starts fresh from 0. The counter advances only on a real
+    // insert, so skipped duplicates (append mode) don't leave rank gaps.
+    let rank = append ? maxRankForDailyScope(dailyScopeId) + 1 : 0;
 
     const items = entry.items ?? [];
     for (let i = 0; i < items.length; i++) {
@@ -188,11 +240,13 @@ export const importArchiveDay = db.transaction((day) => {
         github: p.github,
         published_at: p.published,
       });
+      const inserted = addScopePaper(dailyScopeId, paperId, rank, item, append);
+      if (!inserted) continue; // append mode: paper was already linked today
+      rank++;
       if (!seenPapers.has(paperId)) {
         seenPapers.add(paperId);
         paperCount++;
       }
-      addScopePaper(dailyScopeId, paperId, i, item);
       linkCount++;
     }
   }

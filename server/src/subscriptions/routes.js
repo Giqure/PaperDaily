@@ -92,6 +92,8 @@ router.post('/', writeLimiter, (req, res) => {
  */
 router.post('/scopes', writeLimiter, (req, res) => {
   const name = normalizeName(req.body?.name);
+  const nameEn = normalizeName(req.body?.nameEn);
+  const nameZh = normalizeName(req.body?.nameZh);
   const queries = normalizeQueries(req.body?.queries);
   const interests = String(req.body?.interests ?? '').trim();
 
@@ -104,6 +106,11 @@ router.post('/scopes', writeLimiter, (req, res) => {
       .json({ error: `Name must be at least ${MIN_NAME_LEN} characters.` });
   }
   if (name.length > MAX_NAME_LEN) {
+    return res
+      .status(400)
+      .json({ error: `Name must be at most ${MAX_NAME_LEN} characters.` });
+  }
+  if (nameEn.length > MAX_NAME_LEN || nameZh.length > MAX_NAME_LEN) {
     return res
       .status(400)
       .json({ error: `Name must be at most ${MAX_NAME_LEN} characters.` });
@@ -139,7 +146,13 @@ router.post('/scopes', writeLimiter, (req, res) => {
     });
   }
 
-  const created = createScope(req.user.id, { name, queries, interests });
+  const created = createScope(req.user.id, {
+    name,
+    nameEn: nameEn || null,
+    nameZh: nameZh || name,
+    queries,
+    interests,
+  });
   if (created.duplicateName) {
     return res
       .status(409)
@@ -153,12 +166,12 @@ router.post('/scopes', writeLimiter, (req, res) => {
 
 /**
  * POST /api/subscriptions/scopes/suggest — AI-assess the draft name, rewrite it
- * into a better scope name, and propose queries + interests. Best-effort:
- * returns 503 when the AI endpoint isn't configured or the model output can't be
- * used, so the client can fall back to manual entry. The returned values are
- * normalized/clamped to the same limits the create route enforces, so they paste
- * straight into the form. The refined name falls back to the input when the
- * model didn't return a usable one.
+ * into refined bilingual (zh/en) scope names, and propose queries + interests.
+ * Best-effort: returns 503 when the AI endpoint isn't configured or the model
+ * output can't be used, so the client can fall back to manual entry. The
+ * returned values are normalized/clamped to the same limits the create route
+ * enforces, so they paste straight into the form. Each refined name falls back
+ * to the input when the model didn't return a usable one.
  * Body: { name }.
  */
 router.post('/scopes/suggest', aiSuggestLimiter, async (req, res) => {
@@ -203,15 +216,17 @@ router.post('/scopes/suggest', aiSuggestLimiter, async (req, res) => {
       .json({ error: 'Suggestions are unavailable right now. Fill the fields in manually.' });
   }
 
-  // Prefer the refined name, but keep it within bounds; fall back to the input
-  // if the model returned nothing usable (too short/long after normalizing).
-  const refined = normalizeName(suggestion.name);
-  const resolvedName =
-    refined.length >= MIN_NAME_LEN && refined.length <= MAX_NAME_LEN
-      ? refined
-      : name;
+  // Keep each refined name within bounds; drop it (empty) if unusable so the
+  // client can fall back to what the user typed. The Chinese name doubles as the
+  // canonical fallback when the model returned nothing for it.
+  const clampName = (n) => {
+    const v = normalizeName(n);
+    return v.length >= MIN_NAME_LEN && v.length <= MAX_NAME_LEN ? v : '';
+  };
+  const nameZh = clampName(suggestion.nameZh) || name;
+  const nameEn = clampName(suggestion.nameEn);
 
-  res.json({ name: resolvedName, queries, interests });
+  res.json({ nameZh, nameEn, queries, interests });
 });
 
 /**

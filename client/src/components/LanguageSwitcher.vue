@@ -1,15 +1,17 @@
 <script setup>
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { SUPPORTED_LOCALES, setLocale } from '../i18n/index.js';
+import { SWITCHABLE_LOCALES, setLocale } from '../i18n/index.js';
 
 const { locale, t } = useI18n();
 
-// Two-locale toggle: the button shows the language it will switch TO, and
-// clicking it cycles to the next supported locale.
+// Toggle across the locales that have a UI entry (SWITCHABLE_LOCALES). The button
+// shows the language it will switch TO, and clicking it cycles to the next one.
+// A current locale outside the switchable set (e.g. the en-all future mode) has
+// index -1, so the cycle lands on the first switchable locale — a safe reset.
 const nextLocale = computed(() => {
-  const i = SUPPORTED_LOCALES.indexOf(locale.value);
-  return SUPPORTED_LOCALES[(i + 1) % SUPPORTED_LOCALES.length];
+  const i = SWITCHABLE_LOCALES.indexOf(locale.value);
+  return SWITCHABLE_LOCALES[(i + 1) % SWITCHABLE_LOCALES.length];
 });
 
 function toggle() {
@@ -30,7 +32,7 @@ function toggle() {
          label is visible; the others reserve space but stay hidden. -->
     <span class="lang-stack" aria-hidden="true">
       <span
-        v-for="code in SUPPORTED_LOCALES"
+        v-for="code in SWITCHABLE_LOCALES"
         :key="code"
         class="lang-label"
         :class="{ shown: code === nextLocale }"
@@ -52,6 +54,7 @@ function toggle() {
 }
 .lang-label {
   grid-area: 1 / 1;
+  text-align: center; /* narrower labels stay centered in the shared cell */
   visibility: hidden;
 }
 .lang-label.shown {
