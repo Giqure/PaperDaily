@@ -28,6 +28,10 @@ function s() {
         'UPDATE users SET email_push_enabled = @enabled WHERE id = @id'
       ),
 
+      updatePassword: db.prepare(
+        'UPDATE users SET password_hash = @password_hash WHERE id = @id'
+      ),
+
       // Users who have at least one push channel enabled — the set the reporter
       // fans out to after generating a digest.
       withPushEnabled: db.prepare(`
@@ -101,6 +105,12 @@ export function updateBarkSettings(userId, { barkPushEnabled, barkKey }) {
 /** Flip a user's email-push flag on or off. Returns the refreshed row. */
 export function setEmailPushEnabled(userId, enabled) {
   s().setEmailPushEnabled.run({ id: userId, enabled: enabled ? 1 : 0 });
+  return s().byId.get(userId);
+}
+
+/** Replace a user's password hash. Returns the refreshed row. */
+export function updatePassword(userId, passwordHash) {
+  s().updatePassword.run({ id: userId, password_hash: passwordHash });
   return s().byId.get(userId);
 }
 

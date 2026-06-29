@@ -611,6 +611,24 @@ const migrations = [
       });
     }
   },
+
+  // 0013 — password-reset tokens. A user who forgot their password requests a
+  // reset; we mail a one-time link to their account address. Visiting it with a
+  // valid, unused, unexpired token lets them set a new password. Same single-use,
+  // time-limited shape as email_push_tokens (migration 0010).
+  (d) => {
+    d.exec(`
+      CREATE TABLE password_reset_tokens (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        token      TEXT NOT NULL UNIQUE,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at TEXT NOT NULL,
+        used_at    TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+    `);
+  },
 ];
 
 import { randomUUID } from 'node:crypto';

@@ -67,3 +67,31 @@ export const emailConfirmLimiter = rateLimit({
   keyGenerator: (req) => String(req.user?.id ?? req.ip),
   message: { error: 'Too many confirmation emails requested. Try again later.' },
 });
+
+/**
+ * Limiter for the "forgot password" request. The endpoint is unauthenticated
+ * and mails a link to a user-supplied address, so it's both an email-bomb and
+ * an enumeration-probe vector. Keyed by IP and capped tightly. (The route also
+ * returns the same response whether or not the email exists, so the cap is the
+ * main brake on abuse.)
+ */
+export const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  limit: 5, // 5 reset emails per hour per IP
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many password-reset requests. Try again later.' },
+});
+
+/**
+ * Limiter for submitting a new password via a reset token. Caps brute-forcing
+ * of the token space from a single IP; tokens are 256-bit random so this is
+ * defense-in-depth, not the primary guard.
+ */
+export const resetPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Try again later.' },
+});

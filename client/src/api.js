@@ -33,6 +33,14 @@ export const authApi = {
   me: () => request('/auth/me'),
   checkEmail: (email) =>
     request('/auth/check-email', { method: 'POST', body: { email } }),
+  // Password reset: request a mailed link, validate the token behind the link,
+  // then submit a new password.
+  forgotPassword: (email) =>
+    request('/auth/forgot-password', { method: 'POST', body: { email } }),
+  validateResetToken: (token) =>
+    request(`/auth/reset-password/validate?token=${encodeURIComponent(token)}`),
+  resetPassword: (token, password) =>
+    request('/auth/reset-password', { method: 'POST', body: { token, password } }),
 };
 
 export const subscriptionsApi = {

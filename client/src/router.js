@@ -3,11 +3,16 @@ import { auth } from './store.js';
 import Index from './views/Index.vue';
 import Space from './views/Space.vue';
 import Login from './views/Login.vue';
+import ResetPassword from './views/ResetPassword.vue';
 
 const routes = [
   { path: '/', name: 'index', component: Index },
   { path: '/space', name: 'space', component: Space, meta: { requiresAuth: true } },
   { path: '/login', name: 'login', component: Login, meta: { guestOnly: true } },
+  // Reached via the mailed reset link. Open to anyone with a valid token; the
+  // token (not a session) authorizes the action, so it's not guestOnly — a
+  // logged-in user following the link from email still lands here.
+  { path: '/reset-password', name: 'reset-password', component: ResetPassword },
 ];
 
 const router = createRouter({
