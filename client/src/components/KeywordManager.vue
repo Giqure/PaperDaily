@@ -5,6 +5,10 @@ import { subscriptionsApi } from '../api.js';
 
 const { t } = useI18n();
 
+// Minimum scope-name length, mirrored by the server (subscriptions/routes.js).
+// Names shorter than this are too vague to query or auto-fill on.
+const MIN_NAME_LEN = 8;
+
 const props = defineProps({
   // Scope name currently in view (scrollspy) — highlighted in the nav.
   activeScope: { type: String, default: '' },
@@ -34,6 +38,15 @@ const editing = ref(false);
 // Create-scope form.
 const showForm = ref(false);
 const form = ref({ name: '', queries: '', interests: '' });
+
+// Mirror the server's normalizeName (subscriptions/routes.js): trim and collapse
+// internal whitespace. Padding like "1    1" must not game the length check —
+// the server stores "1 1" (length 3), so we measure the same way.
+function normalizeName(raw) {
+  return String(raw ?? '').trim().replace(/\s+/g, ' ');
+}
+
+const normalizedName = computed(() => normalizeName(form.value.name));
 
 // Scope ids already followed, to hide them from the catalog picker.
 const followedIds = computed(
@@ -90,15 +103,18 @@ async function follow(scopeId) {
 
 // Ask the AI to fill the queries + interests fields from the entered name.
 async function suggestFields() {
-  const name = form.value.name.trim();
-  if (!name) {
+  const name = normalizedName.value;
+  if (name.length < MIN_NAME_LEN) {
     error.value = t('scopes.suggestNeedsName');
     return;
   }
   error.value = '';
   suggesting.value = true;
   try {
-    const { queries, interests } = await subscriptionsApi.suggestScope(name);
+    const { name: refined, queries, interests } =
+      await subscriptionsApi.suggestScope(name);
+    // The AI may rewrite the name into a better-scoped one — write it back.
+    if (refined) form.value.name = refined;
     // queries arrives as an array; the textarea is one-per-line.
     form.value.queries = queries.join('\n');
     form.value.interests = interests || '';
@@ -244,13 +260,14 @@ defineExpose({ reload: load });
                 <button
                   type="button"
                   class="suggest-btn"
-                  :disabled="submitting || suggesting || !form.name.trim()"
+                  :disabled="submitting || suggesting || normalizedName.length < MIN_NAME_LEN"
                   :title="t('scopes.suggest')"
                   :aria-label="t('scopes.suggest')"
                   @click="suggestFields"
                 >
+                  <span v-if="suggesting" class="suggest-spinner" aria-hidden="true" />
                   <svg
-                    v-if="!suggesting"
+                    v-else
                     class="suggest-icon"
                     viewBox="0 0 24 24"
                     width="15"
@@ -262,14 +279,12 @@ defineExpose({ reload: load });
                       d="M11 2.5l1.6 4.3 4.3 1.6-4.3 1.6L11 14.3 9.4 10 5.1 8.4 9.4 6.8 11 2.5zM18 13l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9L18 13z"
                     />
                   </svg>
-                  <span class="suggest-label">{{
-                    suggesting ? t('scopes.suggesting') : t('scopes.suggest')
-                  }}</span>
                 </button>
               </span>
               <input
                 v-model="form.name"
                 type="text"
+                :minlength="MIN_NAME_LEN"
                 maxlength="80"
                 :placeholder="t('scopes.namePlaceholder')"
                 :disabled="submitting"

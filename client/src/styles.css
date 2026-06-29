@@ -571,15 +571,15 @@ button.ghost:hover:not(:disabled) {
 .suggest-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  justify-content: center;
   margin: 0;
-  padding: 0.2rem 0.5rem;
+  padding: 0;
+  width: 26px;
+  height: 26px;
   background: transparent;
   border: 1px solid var(--rule);
-  border-radius: 999px;
+  border-radius: 50%;
   color: var(--navy);
-  font-size: 0.74rem;
-  font-weight: 600;
   cursor: pointer;
 }
 
@@ -595,6 +595,22 @@ button.ghost:hover:not(:disabled) {
 
 .suggest-icon {
   flex: none;
+}
+
+/* Loading spinner shown in place of the icon while the AI is generating. */
+.suggest-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--rule);
+  border-top-color: var(--navy);
+  border-radius: 50%;
+  animation: suggest-spin 0.7s linear infinite;
+}
+
+@keyframes suggest-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .scope-form textarea {

@@ -15,6 +15,7 @@ import { suggestScopeFields } from './suggest.js';
 const router = Router();
 
 const MAX_NAME_LEN = 80;
+const MIN_NAME_LEN = 8; // names below this are too vague to query/curate on
 const MAX_QUERY_LEN = 200;
 const MAX_QUERIES = 8; // per scope — keeps the morning collection bounded
 const MAX_INTERESTS_LEN = 600;
@@ -97,6 +98,11 @@ router.post('/scopes', writeLimiter, (req, res) => {
   if (!name) {
     return res.status(400).json({ error: 'A scope name is required.' });
   }
+  if (name.length < MIN_NAME_LEN) {
+    return res
+      .status(400)
+      .json({ error: `Name must be at least ${MIN_NAME_LEN} characters.` });
+  }
   if (name.length > MAX_NAME_LEN) {
     return res
       .status(400)
@@ -146,17 +152,24 @@ router.post('/scopes', writeLimiter, (req, res) => {
 });
 
 /**
- * POST /api/subscriptions/scopes/suggest — AI-fill the queries + interests for a
- * scope from its name. Best-effort: returns 503 when the AI endpoint isn't
- * configured or the model output can't be used, so the client can fall back to
- * manual entry. The returned values are normalized/clamped to the same limits
- * the create route enforces, so they paste straight into the form.
+ * POST /api/subscriptions/scopes/suggest — AI-assess the draft name, rewrite it
+ * into a better scope name, and propose queries + interests. Best-effort:
+ * returns 503 when the AI endpoint isn't configured or the model output can't be
+ * used, so the client can fall back to manual entry. The returned values are
+ * normalized/clamped to the same limits the create route enforces, so they paste
+ * straight into the form. The refined name falls back to the input when the
+ * model didn't return a usable one.
  * Body: { name }.
  */
 router.post('/scopes/suggest', aiSuggestLimiter, async (req, res) => {
   const name = normalizeName(req.body?.name);
   if (!name) {
     return res.status(400).json({ error: 'A scope name is required.' });
+  }
+  if (name.length < MIN_NAME_LEN) {
+    return res
+      .status(400)
+      .json({ error: `Name must be at least ${MIN_NAME_LEN} characters.` });
   }
   if (name.length > MAX_NAME_LEN) {
     return res
@@ -190,7 +203,15 @@ router.post('/scopes/suggest', aiSuggestLimiter, async (req, res) => {
       .json({ error: 'Suggestions are unavailable right now. Fill the fields in manually.' });
   }
 
-  res.json({ queries, interests });
+  // Prefer the refined name, but keep it within bounds; fall back to the input
+  // if the model returned nothing usable (too short/long after normalizing).
+  const refined = normalizeName(suggestion.name);
+  const resolvedName =
+    refined.length >= MIN_NAME_LEN && refined.length <= MAX_NAME_LEN
+      ? refined
+      : name;
+
+  res.json({ name: resolvedName, queries, interests });
 });
 
 /**

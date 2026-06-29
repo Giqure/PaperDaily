@@ -23,7 +23,7 @@ export default {
     passwordPlaceholder: '至少 8 个字符',
     continue: '继续',
     continuing: '处理中…',
-    tip: '输入新邮箱将自动创建账户',
+    tip: '首次输入邮箱和密码将自动创建账户',
     createTitle: '创建账户',
     createSub: '尚无 {email} 的账户。请确认密码以完成注册。',
     confirmPassword: '确认密码',
