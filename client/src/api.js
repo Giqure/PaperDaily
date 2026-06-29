@@ -49,6 +49,9 @@ export const subscriptionsApi = {
   add: (scopeId) => request('/subscriptions', { method: 'POST', body: { scopeId } }),
   createScope: (payload) =>
     request('/subscriptions/scopes', { method: 'POST', body: payload }),
+  // AI-fill arXiv queries + interests from a scope name.
+  suggestScope: (name) =>
+    request('/subscriptions/scopes/suggest', { method: 'POST', body: { name } }),
   remove: (id) => request(`/subscriptions/${id}`, { method: 'DELETE' }),
 };
 

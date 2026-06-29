@@ -560,6 +560,43 @@ button.ghost:hover:not(:disabled) {
   font-weight: 400;
 }
 
+/* Name field header row: label on the left, AI auto-fill button on the right. */
+.label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.suggest-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  color: var(--navy);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.suggest-btn:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--navy);
+}
+
+.suggest-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.suggest-icon {
+  flex: none;
+}
+
 .scope-form textarea {
   resize: vertical;
   font-family: inherit;

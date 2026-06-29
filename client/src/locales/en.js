@@ -103,6 +103,10 @@ export default {
     creating: 'Creating…',
     cancel: 'Cancel',
     errNameQueryRequired: 'A name and at least one query are required.',
+    suggest: 'Auto-fill with AI',
+    suggesting: 'Generating…',
+    suggestNeedsName: 'Enter a name first, then auto-fill.',
+    suggestFailed: 'Could not auto-fill. Fill the fields in manually.',
   },
   push: {
     title: 'Daily push',

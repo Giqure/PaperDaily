@@ -102,6 +102,10 @@ export default {
     creating: '创建中…',
     cancel: '取消',
     errNameQueryRequired: '请填写名称和至少一条查询。',
+    suggest: 'AI 自动填写',
+    suggesting: '生成中…',
+    suggestNeedsName: '请先填写名称，再自动填写。',
+    suggestFailed: '自动填写失败，请手动填写。',
   },
   push: {
     title: '每日推送',

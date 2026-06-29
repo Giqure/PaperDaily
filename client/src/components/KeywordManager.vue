@@ -24,6 +24,9 @@ const loading = ref(true);
 const submitting = ref(false);
 const error = ref('');
 
+// True while the AI fills the queries/interests fields from the name.
+const suggesting = ref(false);
+
 // Management UI (catalog picker, author form, delete buttons) is collapsed by
 // default — the sidebar reads as a clean scope nav until you choose to edit.
 const editing = ref(false);
@@ -82,6 +85,27 @@ async function follow(scopeId) {
     error.value = err.message;
   } finally {
     submitting.value = false;
+  }
+}
+
+// Ask the AI to fill the queries + interests fields from the entered name.
+async function suggestFields() {
+  const name = form.value.name.trim();
+  if (!name) {
+    error.value = t('scopes.suggestNeedsName');
+    return;
+  }
+  error.value = '';
+  suggesting.value = true;
+  try {
+    const { queries, interests } = await subscriptionsApi.suggestScope(name);
+    // queries arrives as an array; the textarea is one-per-line.
+    form.value.queries = queries.join('\n');
+    form.value.interests = interests || '';
+  } catch (err) {
+    error.value = err.status === 503 ? t('scopes.suggestFailed') : err.message;
+  } finally {
+    suggesting.value = false;
   }
 }
 
@@ -215,7 +239,34 @@ defineExpose({ reload: load });
 
           <form v-else class="scope-form" @submit.prevent="createScope">
             <label>
-              {{ t('scopes.name') }}
+              <span class="label-row">
+                {{ t('scopes.name') }}
+                <button
+                  type="button"
+                  class="suggest-btn"
+                  :disabled="submitting || suggesting || !form.name.trim()"
+                  :title="t('scopes.suggest')"
+                  :aria-label="t('scopes.suggest')"
+                  @click="suggestFields"
+                >
+                  <svg
+                    v-if="!suggesting"
+                    class="suggest-icon"
+                    viewBox="0 0 24 24"
+                    width="15"
+                    height="15"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M11 2.5l1.6 4.3 4.3 1.6-4.3 1.6L11 14.3 9.4 10 5.1 8.4 9.4 6.8 11 2.5zM18 13l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9L18 13z"
+                    />
+                  </svg>
+                  <span class="suggest-label">{{
+                    suggesting ? t('scopes.suggesting') : t('scopes.suggest')
+                  }}</span>
+                </button>
+              </span>
               <input
                 v-model="form.name"
                 type="text"

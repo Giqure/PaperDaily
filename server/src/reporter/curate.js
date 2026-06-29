@@ -67,7 +67,7 @@ function buildCuratePrompt(scope, candidates) {
   );
 }
 
-async function callChatApi(cfg, prompt) {
+export async function callChatApi(cfg, prompt) {
   const apiKey = cfg.openaiApiKey;
   if (!apiKey) {
     log('未配置 OPENAI_API_KEY, 跳过 AI 精选');

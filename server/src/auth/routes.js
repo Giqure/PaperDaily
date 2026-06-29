@@ -143,19 +143,19 @@ router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
     const link = `${appBaseUrl(req)}/reset-password?token=${token}`;
     await sendMail({
       to: user.email,
-      subject: '重置你的 PaperDaily 密码',
+      subject: '重置你的 PaperDaily 密码 / Reset your PaperDaily password',
       text: [
-        '你正在重置 PaperDaily 账户的密码。',
+        '你正在重置 PaperDaily 账户的密码。 / You are resetting your PaperDaily account password.',
         '',
-        '点击下面的链接设置新密码（30 分钟内有效）：',
+        '点击下面的链接设置新密码（30 分钟内有效）： / Click the link below to set a new password (valid for 30 minutes):',
         link,
         '',
-        '如果这不是你本人操作，忽略此邮件即可，密码不会改变。',
+        '如果这不是你本人操作，忽略此邮件即可，密码不会改变。 / If this was not you, ignore this email and your password will remain unchanged.',
       ].join('\n'),
       html: `
-        <p>你正在重置 PaperDaily 账户的密码。</p>
-        <p><a href="${link}">点击此处设置新密码</a>（30 分钟内有效）。</p>
-        <p>如果这不是你本人操作，忽略此邮件即可，密码不会改变。</p>
+        <p>你正在重置 PaperDaily 账户的密码。 / You are resetting your PaperDaily account password.</p>
+        <p><a href="${link}">点击此处设置新密码 / Click here to set a new password </a>（30 分钟内有效 / valid for 30 minutes）。 </p>
+        <p>如果这不是你本人操作，忽略此邮件即可，密码不会改变。 / If this was not you, ignore this email and your password will remain unchanged.</p>
       `,
     });
   }

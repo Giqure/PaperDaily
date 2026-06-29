@@ -99,19 +99,19 @@ router.post('/push/email/request', emailConfirmLimiter, writeLimiter, async (req
   const link = `${appBaseUrl(req)}/api/settings/push/email/confirm?token=${token}`;
   const sent = await sendMail({
     to: req.user.email,
-    subject: '确认开启 PaperDaily 邮件推送',
+    subject: '确认开启 PaperDaily 邮件推送 / Confirm PaperDaily email notifications',
     text: [
-      '你正在开启 PaperDaily 每日论文日报的邮件推送。',
+      '你正在开启 PaperDaily 每日论文日报的邮件推送。 / You are enabling PaperDaily email notifications.',
       '',
-      '点击下面的链接确认开启（30 分钟内有效）：',
+      '点击下面的链接确认开启（30 分钟内有效）： / Click the link below to confirm (valid for 30 minutes):',
       link,
       '',
-      '如果这不是你本人操作，忽略此邮件即可，推送不会开启。',
+      '如果这不是你本人操作，忽略此邮件即可，推送不会开启。 / If this was not you, ignore this email and email notifications will remain off.',
     ].join('\n'),
     html: `
-      <p>你正在开启 PaperDaily 每日论文日报的邮件推送。</p>
-      <p><a href="${link}">点击此处确认开启</a>（30 分钟内有效）。</p>
-      <p>如果这不是你本人操作，忽略此邮件即可，推送不会开启。</p>
+      <p>你正在开启 PaperDaily 每日论文日报的邮件推送。 / You are enabling PaperDaily email notifications.</p>
+      <p><a href="${link}">点击此处确认开启 / Click here to confirm </a>（30 分钟内有效 / valid for 30 minutes）。 </p>
+      <p>如果这不是你本人操作，忽略此邮件即可，推送不会开启。 / If this was not you, ignore this email and email notifications will remain off.</p>
     `,
   });
 

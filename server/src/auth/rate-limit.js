@@ -95,3 +95,18 @@ export const resetPasswordLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many attempts. Try again later.' },
 });
+
+/**
+ * Limiter for the AI scope-suggestion endpoint. Each request makes a paid,
+ * slow call to the OpenAI-compatible endpoint, so it's a cost vector if left on
+ * the generous shared writeLimiter. Keyed by user id (the route is behind
+ * requireAuth) so the cap is per-user, not per-IP.
+ */
+export const aiSuggestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 20, // 20 suggestions per window per user
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => String(req.user?.id ?? req.ip),
+  message: { error: 'Too many suggestion requests. Try again shortly.' },
+});

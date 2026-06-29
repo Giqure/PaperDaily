@@ -43,6 +43,12 @@ if (isProd && !sessionSecret) {
 if (!isProd && !sessionSecret) {
   console.warn('SESSION_SECRET is not set; using an insecure development fallback.');
 }
+
+const appBaseUrl = process.env.APP_BASE_URL ;
+if (isProd && !appBaseUrl) {
+  throw new Error('APP_BASE_URL is required in production.');
+}
+
 // Credentialed CORS so the SPA on a different dev origin can send the cookie.
 const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
   .split(',')

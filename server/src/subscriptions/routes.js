@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth/middleware.js';
-import { writeLimiter } from '../auth/rate-limit.js';
+import { writeLimiter, aiSuggestLimiter } from '../auth/rate-limit.js';
 import {
   listSubscriptions,
   subscribe,
@@ -10,6 +10,7 @@ import {
   createScope,
   listCatalog,
 } from './queries.js';
+import { suggestScopeFields } from './suggest.js';
 
 const router = Router();
 
@@ -142,6 +143,54 @@ router.post('/scopes', writeLimiter, (req, res) => {
   // Auto-follow the scope the user just authored.
   const sub = subscribe(req.user.id, created.scope.id);
   res.status(201).json({ subscription: sub.subscription, scope: created.scope });
+});
+
+/**
+ * POST /api/subscriptions/scopes/suggest — AI-fill the queries + interests for a
+ * scope from its name. Best-effort: returns 503 when the AI endpoint isn't
+ * configured or the model output can't be used, so the client can fall back to
+ * manual entry. The returned values are normalized/clamped to the same limits
+ * the create route enforces, so they paste straight into the form.
+ * Body: { name }.
+ */
+router.post('/scopes/suggest', aiSuggestLimiter, async (req, res) => {
+  const name = normalizeName(req.body?.name);
+  if (!name) {
+    return res.status(400).json({ error: 'A scope name is required.' });
+  }
+  if (name.length > MAX_NAME_LEN) {
+    return res
+      .status(400)
+      .json({ error: `Name must be at most ${MAX_NAME_LEN} characters.` });
+  }
+
+  let suggestion;
+  try {
+    suggestion = await suggestScopeFields(name);
+  } catch {
+    suggestion = null;
+  }
+  if (!suggestion) {
+    return res
+      .status(503)
+      .json({ error: 'Suggestions are unavailable right now. Fill the fields in manually.' });
+  }
+
+  // Clamp to the create-route limits so the result is always valid to submit.
+  const queries = normalizeQueries(suggestion.queries)
+    .filter((q) => q.length <= MAX_QUERY_LEN)
+    .slice(0, MAX_QUERIES);
+  const interests = String(suggestion.interests ?? '')
+    .trim()
+    .slice(0, MAX_INTERESTS_LEN);
+
+  if (!queries.length) {
+    return res
+      .status(503)
+      .json({ error: 'Suggestions are unavailable right now. Fill the fields in manually.' });
+  }
+
+  res.json({ queries, interests });
 });
 
 /**
