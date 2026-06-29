@@ -29,7 +29,10 @@ function s() {
       ),
 
       updatePassword: db.prepare(
-        'UPDATE users SET password_hash = @password_hash WHERE id = @id'
+        `UPDATE users SET
+          password_hash   = @password_hash,
+          session_version = session_version + 1
+        WHERE id = @id`
       ),
 
       // Users who have at least one push channel enabled — the set the reporter
@@ -118,4 +121,3 @@ export function updatePassword(userId, passwordHash) {
 export function usersWithPushEnabled() {
   return s().withPushEnabled.all();
 }
-

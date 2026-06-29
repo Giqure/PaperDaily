@@ -42,6 +42,7 @@ function login(req, user) {
       if (err) return reject(err);
 
       req.session.uid = user.uid;
+      req.session.sessionVersion = user.session_version;
 
       req.session.save((saveErr) => {
         if (saveErr) return reject(saveErr);

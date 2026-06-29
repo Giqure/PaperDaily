@@ -629,6 +629,15 @@ const migrations = [
       CREATE INDEX idx_password_reset_tokens_user ON password_reset_tokens(user_id);
     `);
   },
+
+  // 0014 — session invalidation after password reset. Each login stores the
+  // current user session_version in the session; changing the password bumps it
+  // so older sessions are rejected on their next request.
+  (d) => {
+    d.exec(`
+      ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1;
+    `);
+  },
 ];
 
 import { randomUUID } from 'node:crypto';

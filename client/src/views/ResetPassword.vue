@@ -68,8 +68,8 @@ async function submit() {
   }
 }
 
-function goToLogin() {
-  router.replace({ name: 'login' });
+function goHome() {
+  router.replace({ name: 'index' });
 }
 </script>
 
@@ -85,14 +85,13 @@ function goToLogin() {
     <template v-else-if="stage === 'invalid'">
       <h1>{{ t('reset.title') }}</h1>
       <p class="sub">{{ t('reset.invalid') }}</p>
-      <button type="button" @click="goToLogin">{{ t('reset.requestNew') }}</button>
     </template>
 
     <!-- Success -->
     <template v-else-if="stage === 'success'">
       <h1>{{ t('reset.successTitle') }}</h1>
       <p class="sub">{{ t('reset.successSub') }}</p>
-      <button type="button" @click="goToLogin">{{ t('reset.goToLogin') }}</button>
+      <button type="button" @click="goHome">{{ t('reset.goHome') }}</button>
     </template>
 
     <!-- New-password form -->

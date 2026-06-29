@@ -44,9 +44,20 @@ if (!isProd && !sessionSecret) {
   console.warn('SESSION_SECRET is not set; using an insecure development fallback.');
 }
 
-const appBaseUrl = process.env.APP_BASE_URL ;
+const appBaseUrl = process.env.APP_BASE_URL?.trim();
 if (isProd && !appBaseUrl) {
   throw new Error('APP_BASE_URL is required in production.');
+}
+if (appBaseUrl) {
+  let parsedAppBaseUrl;
+  try {
+    parsedAppBaseUrl = new URL(appBaseUrl);
+  } catch {
+    throw new Error('APP_BASE_URL must be an absolute http(s) URL.');
+  }
+  if (!['http:', 'https:'].includes(parsedAppBaseUrl.protocol)) {
+    throw new Error('APP_BASE_URL must use http or https.');
+  }
 }
 
 // Credentialed CORS so the SPA on a different dev origin can send the cookie.
