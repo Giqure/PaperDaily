@@ -1,11 +1,15 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { auth } from '../store.js';
 import { papersApi } from '../api.js';
 import KeywordManager from '../components/KeywordManager.vue';
 import PaperCard from '../components/PaperCard.vue';
 import PushSettings from '../components/PushSettings.vue';
+import LanguageSwitcher from '../components/LanguageSwitcher.vue';
+
+const { t, locale } = useI18n();
 
 const router = useRouter();
 const loggingOut = ref(false);
@@ -39,7 +43,7 @@ const dailyGroups = computed(() => {
     groups.push({ name, papers });
   }
   const rest = daily.value.filter((p) => !placed.has(p.id));
-  if (rest.length) groups.push({ name: 'Other', papers: rest });
+  if (rest.length) groups.push({ name: OTHER_GROUP, papers: rest });
   return groups;
 });
 
@@ -66,15 +70,22 @@ const allGroups = computed(() => {
 
 // Render a digest date as a friendly label, falling back to the raw string.
 function formatDate(date) {
-  if (!date || date === 'Undated') return 'Undated';
+  if (!date || date === 'Undated') return t('space.undated');
   const d = new Date(`${date}T00:00:00`);
   if (Number.isNaN(d.getTime())) return date;
-  return d.toLocaleDateString(undefined, {
+  return d.toLocaleDateString(locale.value, {
     weekday: 'short',
     year: 'numeric',
     month: 'short',
     day: 'numeric',
   });
+}
+
+// The daily feed groups papers under their scope; papers matching no named scope
+// fall into a trailing group keyed by this sentinel, displayed via i18n.
+const OTHER_GROUP = 'Other';
+function groupLabel(name) {
+  return name === OTHER_GROUP ? t('space.otherGroup') : name;
 }
 
 async function loadDaily() {
@@ -218,12 +229,15 @@ onBeforeUnmount(() => observer?.disconnect());
   <div class="space">
     <header class="space-head">
       <div>
-        <h1>Your space</h1>
+        <h1>{{ t('space.title') }}</h1>
         <p class="who">{{ auth.state.user.name || auth.state.user.email }}</p>
       </div>
-      <button class="ghost" :disabled="loggingOut" @click="logout">
-        {{ loggingOut ? 'Logging out…' : 'Log out' }}
-      </button>
+      <div class="space-head-actions">
+        <LanguageSwitcher />
+        <button class="ghost" :disabled="loggingOut" @click="logout">
+          {{ loggingOut ? t('space.loggingOut') : t('space.logOut') }}
+        </button>
+      </div>
     </header>
 
     <div class="space-layout">
@@ -231,13 +245,13 @@ onBeforeUnmount(() => observer?.disconnect());
       <section class="panel">
         <div class="tabs">
           <button :class="{ active: tab === 'daily' }" @click="switchTab('daily')">
-            Daily papers
+            {{ t('space.tabDaily') }}
           </button>
           <button :class="{ active: tab === 'all' }" @click="switchTab('all')">
-            All papers
+            {{ t('space.tabAll') }}
           </button>
           <button :class="{ active: tab === 'saved' }" @click="switchTab('saved')">
-            Saved
+            {{ t('space.tabSaved') }}
           </button>
         </div>
 
@@ -245,13 +259,13 @@ onBeforeUnmount(() => observer?.disconnect());
 
         <!-- Daily -->
         <div v-show="tab === 'daily'">
-          <div v-if="loadingDaily" class="muted">Loading papers…</div>
+          <div v-if="loadingDaily" class="muted">{{ t('space.loadingPapers') }}</div>
           <template v-else>
             <p v-if="!dailyScopes.length" class="muted">
-              Follow some scopes in the sidebar to see your daily papers.
+              {{ t('space.noScopesDaily') }}
             </p>
             <p v-else-if="!daily.length" class="muted">
-              No papers under your scopes right now. Check back tomorrow.
+              {{ t('space.noPapersToday') }}
             </p>
             <template v-else>
               <section
@@ -261,7 +275,7 @@ onBeforeUnmount(() => observer?.disconnect());
                 :data-scope-section="group.name"
                 class="scope-section"
               >
-                <h2 class="scope-section-head">{{ group.name }}</h2>
+                <h2 class="scope-section-head">{{ groupLabel(group.name) }}</h2>
                 <div class="paper-list">
                   <PaperCard
                     v-for="p in group.papers"
@@ -279,13 +293,13 @@ onBeforeUnmount(() => observer?.disconnect());
 
         <!-- All papers (full archive, grouped by digest date) -->
         <div v-show="tab === 'all'">
-          <div v-if="loadingAll" class="muted">Loading papers…</div>
+          <div v-if="loadingAll" class="muted">{{ t('space.loadingPapers') }}</div>
           <template v-else>
             <p v-if="!dailyScopes.length" class="muted">
-              Follow some scopes in the sidebar to see your papers.
+              {{ t('space.noScopesAll') }}
             </p>
             <p v-else-if="!all.length" class="muted">
-              No papers under your scopes yet.
+              {{ t('space.noPapersAll') }}
             </p>
             <template v-else>
               <section
@@ -312,9 +326,9 @@ onBeforeUnmount(() => observer?.disconnect());
 
         <!-- Saved -->
         <div v-show="tab === 'saved'">
-          <div v-if="loadingSaved" class="muted">Loading…</div>
+          <div v-if="loadingSaved" class="muted">{{ t('space.loading') }}</div>
           <template v-else>
-            <p v-if="!saved.length" class="muted">No saved papers yet.</p>
+            <p v-if="!saved.length" class="muted">{{ t('space.noSaved') }}</p>
             <div v-else class="paper-list">
               <PaperCard
                 v-for="p in saved"
@@ -342,3 +356,11 @@ onBeforeUnmount(() => observer?.disconnect());
     </div>
   </div>
 </template>
+
+<style scoped>
+.space-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+</style>

@@ -1,7 +1,10 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { settingsApi } from '../api.js';
+
+const { t } = useI18n();
 
 // Local editable copy of the user's push settings, loaded from the server.
 const settings = ref({ emailPushEnabled: false, barkPushEnabled: false, barkKey: '', email: '' });
@@ -40,7 +43,7 @@ async function save() {
 
   const barkKey = settings.value.barkKey.trim();
   if (settings.value.barkPushEnabled && !barkKey) {
-    error.value = 'Enter your Bark key to enable Bark push.';
+    error.value = t('push.errBarkKey');
     return;
   }
 
@@ -70,8 +73,7 @@ async function turnOnEmail() {
     if (res.status === 'already-on') {
       await load();
     } else {
-      emailNotice.value =
-        `Confirmation link sent to ${settings.value.email}. Open it to finish turning on email push.`;
+      emailNotice.value = t('push.confirmSent', { email: settings.value.email });
     }
   } catch (err) {
     error.value = err.message;
@@ -105,9 +107,9 @@ onMounted(async () => {
   if (outcome) {
     open.value = true;
     if (outcome === 'confirmed') {
-      emailNotice.value = 'Email push is on.';
+      emailNotice.value = t('push.confirmed');
     } else if (outcome === 'invalid') {
-      error.value = 'That confirmation link is invalid or has expired. Try turning email push on again.';
+      error.value = t('push.invalidLink');
     }
     const query = { ...route.query };
     delete query.emailPush;
@@ -119,17 +121,17 @@ onMounted(async () => {
 <template>
   <section class="panel">
     <header class="panel-head">
-      <h2>Daily push</h2>
+      <h2>{{ t('push.title') }}</h2>
       <button class="link-btn" @click="open = !open">
-        {{ open ? 'Done' : 'Edit' }}
+        {{ open ? t('push.done') : t('push.edit') }}
       </button>
     </header>
 
-    <div v-if="loading" class="muted">Loading…</div>
+    <div v-if="loading" class="muted">{{ t('push.loading') }}</div>
 
     <template v-else-if="open">
       <p class="muted push-intro">
-        Get your subscribed scopes' daily digest pushed to you.
+        {{ t('push.intro') }}
       </p>
 
       <p v-if="error" class="error">{{ error }}</p>
@@ -138,8 +140,8 @@ onMounted(async () => {
       <div class="channel">
         <div class="channel-head">
           <span class="channel-label">
-            Email
-            <small class="muted">to {{ settings.email }}</small>
+            {{ t('push.email') }}
+            <small class="muted">{{ t('push.emailTo', { email: settings.email }) }}</small>
           </span>
         </div>
         <button
@@ -149,19 +151,19 @@ onMounted(async () => {
           :disabled="emailBusy"
           @click="turnOnEmail"
         >
-          {{ emailBusy ? 'Working…' : 'Turn on' }}
+          {{ emailBusy ? t('push.working') : t('push.turnOn') }}
         </button>
         <button
           v-else
           type="button"
           class="ghost sm danger"
-          title="Double-click to turn off"
+          :title="t('push.turnOffTitle')"
           :disabled="emailBusy"
           @dblclick="turnOffEmail"
         >
-          {{ emailBusy ? 'Working…' : 'Turn off (double-click)' }}
+          {{ emailBusy ? t('push.working') : t('push.turnOffDouble') }}
         </button>
-        <p v-if="settings.emailPushEnabled" class="muted channel-state">On.</p>
+        <p v-if="settings.emailPushEnabled" class="muted channel-state">{{ t('push.on') }}</p>
         <p v-if="emailNotice" class="ok channel-state">{{ emailNotice }}</p>
       </div>
 
@@ -170,34 +172,34 @@ onMounted(async () => {
       <form class="channel" @submit.prevent="save">
         <div class="channel-head">
           <span class="channel-label">
-            Bark
-            <small class="muted">iOS push</small>
+            {{ t('push.bark') }}
+            <small class="muted">{{ t('push.barkSub') }}</small>
           </span>
           <label class="toggle-row">
             <input v-model="settings.barkPushEnabled" type="checkbox" :disabled="saving" />
-            <span>Enable</span>
+            <span>{{ t('push.enable') }}</span>
           </label>
         </div>
 
         <label v-if="settings.barkPushEnabled" class="bark-key">
-          Bark key
+          {{ t('push.barkKey') }}
           <input
             v-model="settings.barkKey"
             type="text"
             maxlength="120"
-            placeholder="your device key"
+            :placeholder="t('push.barkKeyPlaceholder')"
             :disabled="saving"
           />
           <small class="muted">
-            From the Bark app — the token after the server URL.
+            {{ t('push.barkKeyHint') }}
           </small>
         </label>
 
         <div class="channel-foot">
           <button type="submit" class="sm" :disabled="saving">
-            {{ saving ? 'Saving…' : 'Save Bark' }}
+            {{ saving ? t('push.saving') : t('push.saveBark') }}
           </button>
-          <span v-if="saved" class="ok channel-state">Saved.</span>
+          <span v-if="saved" class="ok channel-state">{{ t('push.saved') }}</span>
         </div>
       </form>
     </template>
@@ -205,12 +207,12 @@ onMounted(async () => {
     <!-- Collapsed summary -->
     <p v-else class="muted">
       <template v-if="settings.emailPushEnabled || settings.barkPushEnabled">
-        On:
-        <template v-if="settings.emailPushEnabled">email</template>
+        {{ t('push.onLabel') }}
+        <template v-if="settings.emailPushEnabled">{{ t('push.email') }}</template>
         <template v-if="settings.emailPushEnabled && settings.barkPushEnabled"> + </template>
-        <template v-if="settings.barkPushEnabled">Bark</template>
+        <template v-if="settings.barkPushEnabled">{{ t('push.bark') }}</template>
       </template>
-      <template v-else>Push is off.</template>
+      <template v-else>{{ t('push.pushOff') }}</template>
     </p>
   </section>
 </template>

@@ -1,5 +1,8 @@
 <script setup>
 import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
   paper: { type: Object, required: true },
@@ -18,7 +21,7 @@ const authorList = computed(() => {
   if (!props.paper.authors) return '';
   const names = props.paper.authors.split(',').map((a) => a.trim()).filter(Boolean);
   if (!names.length) return '';
-  return names.length > 1 ? `${names[0]} et al.` : names[0];
+  return names.length > 1 ? t('paper.etAl', { name: names[0] }) : names[0];
 });
 
 const saved = computed(() => props.paper.state === 'saved');
@@ -116,7 +119,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         :class="{ on: showAi }"
         @click="showAi = !showAi"
       >
-        {{ showAi ? 'AI' : 'Original' }}
+        {{ showAi ? t('paper.ai') : t('paper.original') }}
       </button>
       <a
         v-if="showCode && codeUrl"
@@ -125,15 +128,15 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         :href="codeUrl"
         target="_blank"
         rel="noopener noreferrer"
-        title="Open source code"
+        :title="t('paper.openCode')"
       >
-        Code
+        {{ t('paper.code') }}
       </a>
       <span
         v-else-if="showCode"
         class="code-badge off"
         :class="{ 'ml-auto': !hasBothSummaries }"
-        title="No code available"
+        :title="t('paper.noCode')"
       ></span>
     </div>
 
@@ -160,7 +163,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
       class="summary-toggle"
       @click="expanded = !expanded"
     >
-      {{ expanded ? 'Show less ▴' : 'Show more ▾' }}
+      {{ expanded ? t('paper.showLess') : t('paper.showMore') }}
     </button>
 
     <div class="paper-actions">
@@ -168,8 +171,8 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         <button
           class="icon-btn"
           :class="{ active: saved }"
-          title="Save"
-          aria-label="Save"
+          :title="t('paper.save')"
+          :aria-label="t('paper.save')"
           @click="emit('save')"
         >
           <!-- thumb up -->
@@ -183,8 +186,8 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         <button
           class="icon-btn"
           :class="{ active: dismissed }"
-          title="Dismiss"
-          aria-label="Dismiss"
+          :title="t('paper.dismiss')"
+          :aria-label="t('paper.dismiss')"
           @click="emit('dismiss')"
         >
           <!-- sad face -->
@@ -204,7 +207,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
           @click="onRemoveClick"
           @blur="confirmingRemove = false"
         >
-          {{ confirmingRemove ? 'Confirm remove?' : 'Remove' }}
+          {{ confirmingRemove ? t('paper.confirmRemove') : t('paper.remove') }}
         </button>
       </template>
     </div>

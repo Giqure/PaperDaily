@@ -1,7 +1,11 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { auth } from '../store.js';
+import LanguageSwitcher from '../components/LanguageSwitcher.vue';
+
+const { t } = useI18n();
 
 const router = useRouter();
 const route = useRoute();
@@ -41,7 +45,7 @@ function go() {
 async function submitLogin() {
   error.value = '';
   if (password.value.length < MIN_PASSWORD) {
-    error.value = `Password must be at least ${MIN_PASSWORD} characters.`;
+    error.value = t('login.errPasswordMin', { min: MIN_PASSWORD });
     return;
   }
 
@@ -58,7 +62,7 @@ async function submitLogin() {
     try {
       const registered = await auth.checkEmail(mail);
       if (registered) {
-        error.value = 'Incorrect password for this account.';
+        error.value = t('login.errWrongPassword');
       } else {
         // New email — move to the signup confirmation stage, keeping the
         // password the user already typed.
@@ -78,7 +82,7 @@ async function submitLogin() {
 async function submitSignup() {
   error.value = '';
   if (password.value !== confirm.value) {
-    error.value = 'Passwords do not match.';
+    error.value = t('login.errPasswordMismatch');
     return;
   }
 
@@ -90,7 +94,7 @@ async function submitSignup() {
     // 409 = someone registered this email between stage 1 and now; send them
     // back to log in.
     if (err.status === 409) {
-      error.value = 'This email was just registered. Please log in.';
+      error.value = t('login.errJustRegistered');
       backToLogin();
     } else {
       error.value = err.message;
@@ -111,84 +115,100 @@ function backToLogin() {
   <div class="auth-card">
     <!-- Stage 1: log in (or detect a new email) -->
     <template v-if="stage === 'login'">
-      <h1>PaperDaily</h1>
-      <p class="sub">Log in, or enter a new email to create an account.</p>
+      <h1>{{ t('login.title') }}</h1>
+      <p class="sub">{{ t('login.sub') }}</p>
 
       <form @submit.prevent="submitLogin">
         <label>
-          Email
+          {{ t('login.email') }}
           <input
             v-model="email"
             type="email"
             autocomplete="email"
             required
-            placeholder="Your Email"
+            :placeholder="t('login.emailPlaceholder')"
           />
         </label>
 
         <label>
-          Password
+          {{ t('login.password') }}
           <input
             v-model="password"
             type="password"
             autocomplete="current-password"
             required
             minlength="8"
-            placeholder="At least 8 characters"
+            :placeholder="t('login.passwordPlaceholder')"
           />
         </label>
 
         <p v-if="error" class="error">{{ error }}</p>
 
         <button type="submit" :disabled="submitting">
-          {{ submitting ? 'Continuing…' : 'Continue' }}
+          {{ submitting ? t('login.continuing') : t('login.continue') }}
         </button>
+        <p class="tip">{{ t('login.tip') }}</p>
       </form>
     </template>
 
     <!-- Stage 2: confirm signup for a new email -->
     <template v-else>
-      <h1>Create your account</h1>
+      <h1>{{ t('login.createTitle') }}</h1>
       <p class="sub">
-        No account exists for <strong>{{ email }}</strong> yet. Confirm your
-        password to sign up.
+        <i18n-t keypath="login.createSub" tag="span">
+          <template #email><strong>{{ email }}</strong></template>
+        </i18n-t>
       </p>
 
       <form @submit.prevent="submitSignup">
         <label>
-          Password
+          {{ t('login.password') }}
           <input
             v-model="password"
             type="password"
             autocomplete="new-password"
             required
             minlength="8"
-            placeholder="At least 8 characters"
+            :placeholder="t('login.passwordPlaceholder')"
           />
         </label>
 
         <label>
-          Confirm password
+          {{ t('login.confirmPassword') }}
           <input
             v-model="confirm"
             type="password"
             autocomplete="new-password"
             required
             minlength="8"
-            placeholder="Re-enter your password"
+            :placeholder="t('login.confirmPlaceholder')"
           />
         </label>
 
         <p v-if="error" class="error">{{ error }}</p>
 
         <button type="submit" :disabled="submitting">
-          {{ submitting ? 'Creating…' : 'Sign up' }}
+          {{ submitting ? t('login.creating') : t('login.signUp') }}
         </button>
       </form>
 
       <p class="switch">
-        <a href="#" @click.prevent="backToLogin">Use a different email</a>
+        <a href="#" @click.prevent="backToLogin">{{ t('login.useDifferentEmail') }}</a>
       </p>
     </template>
+
+    <LanguageSwitcher class="auth-lang" />
   </div>
 </template>
+
+<style scoped>
+.tip {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--ink-faint, #807d76);
+  text-align: center;
+}
+.auth-lang {
+  margin-top: 1.5rem;
+}
+</style>

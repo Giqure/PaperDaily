@@ -1,6 +1,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { subscriptionsApi } from '../api.js';
+
+const { t } = useI18n();
 
 const props = defineProps({
   // Scope name currently in view (scrollspy) — highlighted in the nav.
@@ -90,7 +93,7 @@ async function createScope() {
     .map((q) => q.trim())
     .filter(Boolean);
   if (!name || !queries.length) {
-    error.value = 'A name and at least one query are required.';
+    error.value = t('scopes.errNameQueryRequired');
     return;
   }
   error.value = '';
@@ -130,13 +133,13 @@ defineExpose({ reload: load });
 <template>
   <section class="panel">
     <header class="panel-head">
-      <h2>Scopes</h2>
+      <h2>{{ t('scopes.title') }}</h2>
       <button class="link-btn" @click="editing = !editing">
-        {{ editing ? 'Done' : 'Edit' }}
+        {{ editing ? t('scopes.done') : t('scopes.edit') }}
       </button>
     </header>
 
-    <div v-if="loading" class="muted">Loading…</div>
+    <div v-if="loading" class="muted">{{ t('scopes.loading') }}</div>
 
     <template v-else>
       <p v-if="error" class="error">{{ error }}</p>
@@ -163,27 +166,27 @@ defineExpose({ reload: load });
           <button
             v-if="editing"
             class="chip-x"
-            title="Unfollow"
-            aria-label="Unfollow scope"
+            :title="t('scopes.unfollow')"
+            :aria-label="t('scopes.unfollowScope')"
             @click="remove(sub)"
           >
             ×
           </button>
         </div>
       </nav>
-      <p v-else class="muted">You're not following any scopes yet.</p>
+      <p v-else class="muted">{{ t('scopes.none') }}</p>
 
       <!-- Management — collapsed unless editing -->
       <template v-if="editing">
         <div class="edit-meta">
           <span class="budget" :class="{ full: atAuthorCap }">
-            {{ authored.used }}/{{ authored.max }} authored
+            {{ t('scopes.authored', { used: authored.used, max: authored.max }) }}
           </span>
         </div>
 
         <!-- Catalog picker -->
         <div v-if="available.length" class="library">
-          <h3>From the catalog</h3>
+          <h3>{{ t('scopes.fromCatalog') }}</h3>
           <div class="chips">
             <button
               v-for="sc in available"
@@ -204,25 +207,25 @@ defineExpose({ reload: load });
             v-if="!showForm"
             class="ghost sm"
             :disabled="atAuthorCap"
-            :title="atAuthorCap ? 'You have reached your authored-scope limit.' : ''"
+            :title="atAuthorCap ? t('scopes.authorCapTitle') : ''"
             @click="showForm = true"
           >
-            + Author a scope
+            {{ t('scopes.authorScope') }}
           </button>
 
           <form v-else class="scope-form" @submit.prevent="createScope">
             <label>
-              Name
+              {{ t('scopes.name') }}
               <input
                 v-model="form.name"
                 type="text"
                 maxlength="80"
-                placeholder="e.g. 灵巧手与操作"
+                :placeholder="t('scopes.namePlaceholder')"
                 :disabled="submitting"
               />
             </label>
             <label>
-              arXiv queries <small>(one per line)</small>
+              {{ t('scopes.queries') }} <small>{{ t('scopes.queriesHint') }}</small>
               <textarea
                 v-model="form.queries"
                 rows="4"
@@ -231,17 +234,17 @@ defineExpose({ reload: load });
               />
             </label>
             <label>
-              Interests <small>(optional, comma-separated)</small>
+              {{ t('scopes.interests') }} <small>{{ t('scopes.interestsHint') }}</small>
               <textarea
                 v-model="form.interests"
                 rows="2"
-                placeholder="dexterous hand, manipulation, grasping"
+                :placeholder="t('scopes.interestsPlaceholder')"
                 :disabled="submitting"
               />
             </label>
             <div class="form-actions">
               <button type="submit" :disabled="submitting">
-                {{ submitting ? 'Creating…' : 'Create & follow' }}
+                {{ submitting ? t('scopes.creating') : t('scopes.create') }}
               </button>
               <button
                 type="button"
@@ -249,7 +252,7 @@ defineExpose({ reload: load });
                 :disabled="submitting"
                 @click="showForm = false"
               >
-                Cancel
+                {{ t('scopes.cancel') }}
               </button>
             </div>
           </form>
