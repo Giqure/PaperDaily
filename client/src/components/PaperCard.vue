@@ -86,10 +86,22 @@ function measureOverflow() {
   overflowing.value = el.scrollHeight > el.clientHeight + 1;
 }
 
-// Re-measure after the text changes (AI/Original swap) and on mount. Collapse
-// back to the clamped view when the summary content changes.
+// Toggle expand/collapse. On collapse we re-measure: `overflowing` is only valid
+// while clamped, so after switching summaries (AI/Original) it can be stale —
+// re-measuring keeps the "show more" button from lingering on a now-short text.
+async function toggleSummary() {
+  expanded.value = !expanded.value;
+  if (!expanded.value) {
+    await nextTick();
+    measureOverflow();
+  }
+}
+
+// Re-measure after the text changes (AI/Original swap) and on mount. The
+// expand/collapse state is kept across the swap so toggling AI/Original doesn't
+// reset the user's choice. Re-measuring only matters while collapsed (when
+// expanded, measureOverflow is a no-op and the toggle stays "show less").
 watch(summaryText, async () => {
-  expanded.value = false;
   await nextTick();
   measureOverflow();
 });
@@ -164,7 +176,7 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
     <button
       v-if="summaryText && (overflowing || expanded)"
       class="summary-toggle"
-      @click="expanded = !expanded"
+      @click="toggleSummary"
     >
       {{ expanded ? t('paper.showLess') : t('paper.showMore') }}
     </button>
