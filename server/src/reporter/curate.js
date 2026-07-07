@@ -32,7 +32,7 @@ function buildCuratePrompt(scope, candidates) {
     .slice(0, scope.max_candidates)
     .map(
       (p, i) =>
-        `[${i}] 标题: ${asData(p.title, 300)}\n发表时间: ${asData(p.published, 40)}\n摘要: ${asData(p.summary, 900)}`
+        `[${i}] 标题: ${asData(p.title, 300)}\n发表时间: ${asData(p.published, 40)}\n摘要: ${asData(p.summary, 1500)}`
     )
     .join('\n\n');
 
