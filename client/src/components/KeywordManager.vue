@@ -244,8 +244,8 @@ defineExpose({ reload: load });
           </span>
         </div>
 
-        <!-- Catalog picker -->
-        <div v-if="available.length" class="library">
+        <!-- Catalog picker — collapsed while authoring a scope -->
+        <div v-if="available.length && !showForm" class="library">
           <h3>{{ t('scopes.fromCatalog') }}</h3>
           <div class="chips">
             <button
