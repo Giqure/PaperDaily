@@ -110,3 +110,19 @@ export const aiSuggestLimiter = rateLimit({
   keyGenerator: (req) => String(req.user?.id ?? req.ip),
   message: { error: 'Too many suggestion requests. Try again shortly.' },
 });
+
+/**
+ * Limiter for triggering an on-demand report. Each request can fan out to many
+ * paced arXiv fetches plus paid OpenAI calls, so it's a cost + external-load
+ * vector if left on the generous shared writeLimiter. Keyed by user id (the
+ * route is behind requireAuth) so the cap is per-user. A per-user active-job
+ * guard in the route also blocks concurrent runs; this bounds the total rate.
+ */
+export const reportGenerateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  limit: 20, // 20 report triggers per hour per user
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => String(req.user?.id ?? req.ip),
+  message: { error: 'Too many report requests. Try again later.' },
+});

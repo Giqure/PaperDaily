@@ -63,6 +63,19 @@ export const papersApi = {
     request(`/papers/${id}/state`, { method: 'PUT', body: { state } }),
 };
 
+export const reportsApi = {
+  // Trigger a background report for a date + scopes. Returns { jobId, status }.
+  generate: (date, scopeIds) =>
+    request('/reports/generate', { method: 'POST', body: { date, scopeIds } }),
+  // Poll a job's status by id.
+  job: (id) => request(`/reports/jobs/${id}`),
+  // The curated papers for a (date, scopes) result, regardless of subscription.
+  result: (date, scopeIds) =>
+    request(
+      `/reports/result?date=${encodeURIComponent(date)}&scopeIds=${scopeIds.join(',')}`
+    ),
+};
+
 export const settingsApi = {
   getPush: () => request('/settings/push'),
   // Bark settings only — email push is gated behind a mailed confirmation link.

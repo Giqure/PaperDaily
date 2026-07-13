@@ -15,6 +15,22 @@ const log = (...parts) => console.log('[reporter:push]', ...parts);
 // In a web app the "full digest" lives in the app, not a local file.
 const FULL_HINT = '完整内容见 PaperDaily 网页';
 
+function appBaseUrl() {
+  const base = process.env.APP_BASE_URL?.trim();
+  return base ? base.replace(/\/+$/, '') : '';
+}
+
+function reportUrl(scopeResults, dateStr) {
+  const base = appBaseUrl();
+  if (!base) return '';
+  const scopeIds = scopeResults
+    .map(({ scope }) => scope.id)
+    .filter((id) => Number.isInteger(Number(id)));
+  if (!scopeIds.length) return base + '/report';
+  const params = new URLSearchParams({ date: dateStr, scopeIds: scopeIds.join(',') });
+  return base + '/report?' + params.toString();
+}
+
 // Byte-aware truncation (Bark bodies are capped in bytes, and Chinese text is
 // multi-byte).
 function truncate(text, limit) {
@@ -228,7 +244,9 @@ async function makeTransporter(cfg) {
 async function sendUserEmail(cfg, transporter, user, scopeResults, dateStr) {
   const e = cfg.push.email;
   const selected = selectedPushItems(scopeResults);
+  const url = reportUrl(scopeResults, dateStr);
   const lines = [`论文日报 ${dateStr}`, '', `精选 ${selected.length} 篇, 完整 Markdown 见附件。`, ''];
+  if (url) lines.push(`网页版链接: ${url}`, '');
   selected.forEach(({ scope, item }, i) => {
     lines.push(`${i + 1}. [${scope.name}] ${item.paper.title}`);
     if (item.tldr) lines.push(`   ${item.tldr}`);

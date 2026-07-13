@@ -2,12 +2,14 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { auth } from './store.js';
 import Index from './views/Index.vue';
 import Space from './views/Space.vue';
+import Report from './views/Report.vue';
 import Login from './views/Login.vue';
 import ResetPassword from './views/ResetPassword.vue';
 
 const routes = [
   { path: '/', name: 'index', component: Index },
   { path: '/space', name: 'space', component: Space, meta: { requiresAuth: true } },
+  { path: '/report', name: 'report', component: Report, meta: { requiresAuth: true } },
   { path: '/login', name: 'login', component: Login, meta: { guestOnly: true } },
   // Reached via the mailed reset link. Open to anyone with a valid token; the
   // token (not a session) authorizes the action, so it's not guestOnly — a

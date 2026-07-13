@@ -47,11 +47,23 @@ export function normalizeQuery(query) {
   return expandQuotedFields(decoded).replace(/\s+/g, ' ').trim();
 }
 
-export function buildQueryUrl(query, maxResults) {
-  const encoded = quotePlus(normalizeQuery(query), ':()');
+/**
+ * Build an arXiv API query URL. `opts.submittedDateRange` ({ start, end } as
+ * 'YYYYMMDDHHMM' strings) appends an `AND submittedDate:[start TO end]` clause so
+ * on-demand reports can target a specific day; omitting it (the default, used by
+ * the scheduled reporter) queries without a date bound. The range is spliced in
+ * after quotePlus() encoding — its safe set is only ':()', so the brackets and
+ * spaces are pre-encoded here (%5B/%5D and '+').
+ */
+export function buildQueryUrl(query, maxResults, { submittedDateRange } = {}) {
+  let searchQuery = quotePlus(normalizeQuery(query), ':()');
+  if (submittedDateRange) {
+    const { start, end } = submittedDateRange;
+    searchQuery += '+AND+submittedDate:%5B' + start + '+TO+' + end + '%5D';
+  }
   return (
     'https://export.arxiv.org/api/query?search_query=' +
-    encoded +
+    searchQuery +
     '&sortBy=submittedDate&sortOrder=descending&max_results=' +
     String(maxResults)
   );
@@ -68,8 +80,8 @@ async function paceRequest(minIntervalSeconds) {
  * Fetch one arXiv query, returning the raw Atom XML (or '' on failure).
  * Retries on 406/429/5xx with backoff, respecting Retry-After when present.
  */
-export async function fetchQuery(query, maxResults, scope, cfg) {
-  const url = buildQueryUrl(query, maxResults);
+export async function fetchQuery(query, maxResults, scope, cfg, opts) {
+  const url = buildQueryUrl(query, maxResults, opts);
   const retries = Math.max(1, cfg.arxivRetries);
   const retryDelay = Math.max(1, cfg.arxivRetryDelaySeconds);
   const RETRYABLE = new Set([406, 429, 500, 502, 503, 504]);

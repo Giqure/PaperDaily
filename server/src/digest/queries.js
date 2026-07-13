@@ -76,6 +76,14 @@ function s() {
         'SELECT 1 FROM daily_scopes WHERE digest_date = ? LIMIT 1'
       ),
 
+      // Does a specific scope already have a digest on this date? Per-(date,
+      // scope) reuse check for on-demand reports: a scope that already ran that
+      // date is reused as-is rather than re-fetched. (dayHasDigest is day-level
+      // and can't answer this.)
+      digestExistsForScope: db.prepare(
+        'SELECT 1 FROM daily_scopes WHERE digest_date = ? AND scope_id = ? LIMIT 1'
+      ),
+
       // External ids of papers already stored under any daily scope on/after a
       // cutoff date — used by the reporter to avoid re-surfacing recent papers.
       recentExternalIds: db.prepare(`
@@ -206,6 +214,11 @@ export function addScopePaper(dailyScopeId, paperId, rank, enrichment, append = 
 /** True when a digest already exists for `date` ('YYYY-MM-DD'). */
 export function dayHasDigest(date) {
   return !!s().dayHasDigest.get(date);
+}
+
+/** True when scope `scopeId` already has a digest on `date` ('YYYY-MM-DD'). */
+export function digestExistsForScope(date, scopeId) {
+  return !!s().digestExistsForScope.get(date, scopeId);
 }
 
 /** Highest rank linked under a daily scope, or -1 when it has no papers yet. */

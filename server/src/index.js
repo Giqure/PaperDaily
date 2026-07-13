@@ -16,6 +16,8 @@ import authRoutes from './auth/routes.js';
 import subscriptionRoutes from './subscriptions/routes.js';
 import paperRoutes from './papers/routes.js';
 import settingsRoutes from './settings/routes.js';
+import reportRoutes from './reports/routes.js';
+import { markInterruptedJobs } from './reports/queries.js';
 import { reporterConfig } from './reporter/config.js';
 import { startScheduler } from './reporter/scheduler.js';
 
@@ -24,6 +26,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Apply pending DB migrations before accepting requests.
 const schemaVersion = migrate();
 console.log(`Database ready (schema v${schemaVersion})`);
+
+// Any on-demand report job still marked pending/running was interrupted by a
+// previous shutdown and can't resume — fail it so clients stop polling.
+const interrupted = markInterruptedJobs();
+if (interrupted) console.log(`Marked ${interrupted} interrupted report job(s) as failed`);
 
 // Arm the daily reporter timer (no-op unless REPORTER_ENABLED).
 const stopScheduler = startScheduler(reporterConfig());
@@ -114,6 +121,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/papers', paperRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/reports', reportRoutes);
 
 app.get('/api/welcome', (req, res) => {
   res.json({

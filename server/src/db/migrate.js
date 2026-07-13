@@ -805,6 +805,33 @@ const migrations = [
       setEn.run({ name, nameEn });
     }
   },
+
+  // 0019 — on-demand report jobs. A user can trigger a report for a chosen date
+  // and set of scopes; because the arXiv-fetch + AI-curation pipeline takes
+  // minutes it runs as a background job and the client polls its status. Each
+  // row tracks the request (target date + requested scope ids) and, once done,
+  // which scopes were reused (a digest already existed that date) vs. freshly
+  // generated, so the client can flag "already reported" per scope.
+  (d) => {
+    d.exec(`
+      CREATE TABLE report_jobs (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        target_date         TEXT NOT NULL,          -- 'YYYY-MM-DD'
+        scope_ids           TEXT NOT NULL,          -- JSON array of requested scope ids
+        status              TEXT NOT NULL DEFAULT 'pending'
+                              CHECK (status IN ('pending','running','done','failed')),
+        reused_scope_ids    TEXT,                   -- JSON array, set when done
+        generated_scope_ids TEXT,                   -- JSON array, set when done
+        error               TEXT,                   -- set when failed
+        created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        started_at          TEXT,
+        finished_at         TEXT,
+        updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_report_jobs_user ON report_jobs(user_id, created_at DESC);
+    `);
+  },
 ];
 
 import { randomUUID } from 'node:crypto';
